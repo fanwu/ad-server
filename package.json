@@ -1,0 +1,50 @@
+{
+  "name": "ctv-ad-server",
+  "version": "0.1.0",
+  "description": "CTV (Connected TV) Ad Server - A scalable advertising platform for streaming TV",
+  "private": true,
+  "workspaces": [
+    "services/*",
+    "shared/*"
+  ],
+  "scripts": {
+    "dev": "npm run setup:dev && npm run dev:services",
+    "setup:dev": "docker-compose -f docker-compose.dev.yml up -d && sleep 10",
+    "dev:services": "concurrently \"npm run dev --workspace=services/api-gateway\"",
+    "test": "npm run test:unit && npm run test:integration",
+    "test:unit": "npm run test --workspaces",
+    "test:integration": "jest --config=jest.integration.config.js",
+    "test:load": "k6 run tools/testing/load-tests/api-gateway.js",
+    "db:migrate": "node shared/database/migrate.js",
+    "db:seed": "npm run db:migrate && psql $DATABASE_URL -f shared/database/seeds/development.sql",
+    "db:reset": "npm run db:drop && npm run db:create && npm run db:migrate && npm run db:seed",
+    "db:drop": "docker-compose -f docker-compose.dev.yml exec postgres psql -U adserver -d postgres -c 'DROP DATABASE IF EXISTS adserver_dev;'",
+    "db:create": "docker-compose -f docker-compose.dev.yml exec postgres psql -U adserver -d postgres -c 'CREATE DATABASE adserver_dev;'",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "setup": "bash tools/scripts/setup-dev.sh",
+    "start": "npm run dev",
+    "clean": "docker-compose -f docker-compose.dev.yml down -v"
+  },
+  "devDependencies": {
+    "@jest/globals": "^29.7.0",
+    "concurrently": "^8.2.0",
+    "eslint": "^8.45.0",
+    "jest": "^29.7.0",
+    "supertest": "^6.3.3"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  },
+  "keywords": [
+    "ctv",
+    "ad-server",
+    "advertising",
+    "connected-tv",
+    "streaming",
+    "vast"
+  ],
+  "author": "CTV Ad Server Team",
+  "license": "MIT"
+}
