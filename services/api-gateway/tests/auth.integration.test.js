@@ -118,6 +118,8 @@ describe('Authentication Integration Tests', () => {
                 name: 'First User'
             };
 
+            await cleanupTestUserByEmail(userData.email);
+
             // Register first user
             const firstResponse = await request(app)
                 .post('/api/v1/auth/register')

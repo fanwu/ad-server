@@ -350,15 +350,18 @@ describe('Middleware Tests', () => {
     });
 
     describe('Logging Middleware', () => {
+        let dateNowSpy;
+        let dateToISOStringSpy;
+
         beforeEach(() => {
             // Mock Date.now for consistent timing tests
-            jest.spyOn(Date, 'now').mockReturnValue(1000);
-            jest.spyOn(Date.prototype, 'toISOString').mockReturnValue('2023-01-01T00:00:00.000Z');
+            dateNowSpy = jest.spyOn(Date, 'now').mockReturnValue(1000);
+            dateToISOStringSpy = jest.spyOn(Date.prototype, 'toISOString').mockReturnValue('2023-01-01T00:00:00.000Z');
         });
 
         afterEach(() => {
-            Date.now.mockRestore();
-            Date.prototype.toISOString.mockRestore();
+            dateNowSpy.mockRestore();
+            dateToISOStringSpy.mockRestore();
         });
 
         it('should add request ID and log incoming request', () => {
@@ -384,7 +387,7 @@ describe('Middleware Tests', () => {
             loggingMiddleware(req, res, next);
 
             // Simulate time passing
-            Date.now.mockReturnValue(1500); // 500ms later
+            dateNowSpy.mockReturnValue(1500); // 500ms later
 
             // Trigger response logging by calling res.json
             const responseBody = { success: true };
@@ -406,7 +409,7 @@ describe('Middleware Tests', () => {
             loggingMiddleware(req, res, next);
 
             // Simulate time passing
-            Date.now.mockReturnValue(1200); // 200ms later
+            dateNowSpy.mockReturnValue(1200); // 200ms later
 
             // Trigger error response logging
             const errorBody = { error: { message: 'Not found' } };

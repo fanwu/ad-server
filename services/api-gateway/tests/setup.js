@@ -89,7 +89,7 @@ beforeEach(async () => {
 afterEach(async () => {
     // Clean up test data from database
     if (global.testPool) {
-        await global.testPool.query('DELETE FROM users WHERE email LIKE \'%test%\'');
+        await global.testPool.query("DELETE FROM users WHERE email LIKE 'test-%@%'");
     }
 });
 

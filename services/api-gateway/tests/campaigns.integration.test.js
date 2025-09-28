@@ -10,13 +10,12 @@ describe('Campaign Integration Tests', () => {
     let testUser;
     let authToken;
 
-    beforeAll(async () => {
-        // Clean up any existing user with this email first
-        await global.testPool.query('DELETE FROM users WHERE email = $1', ['campaign-test@example.com']);
+    let userEmail;
 
-        // Create a test user for all campaign tests
+    beforeEach(async () => {
+        userEmail = `campaign-test-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@example.com`;
         const userData = {
-            email: 'campaign-test@example.com',
+            email: userEmail,
             password: 'testpassword123',
             name: 'Campaign Test User',
             role: 'advertiser'
@@ -31,23 +30,11 @@ describe('Campaign Integration Tests', () => {
         authToken = response.body.tokens.accessToken;
     });
 
-    beforeEach(async () => {
-        // Get a fresh token before each test to prevent expiration
-        const loginResponse = await request(app)
-            .post('/api/v1/auth/login')
-            .send({
-                email: 'campaign-test@example.com',
-                password: 'testpassword123'
-            })
-            .expect(200);
-
-        authToken = loginResponse.body.tokens.accessToken;
-    });
-
-    afterAll(async () => {
-        // Clean up test user
+    afterEach(async () => {
         if (testUser) {
             await global.testPool.query('DELETE FROM users WHERE id = $1', [testUser.id]);
+            testUser = null;
+            authToken = null;
         }
     });
 

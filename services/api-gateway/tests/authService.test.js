@@ -11,6 +11,9 @@ jest.mock('../src/services/redisService', () => ({
     setex: jest.fn(),
     set: jest.fn(),
     del: jest.fn(),
+    connect: jest.fn().mockResolvedValue(undefined),
+    disconnect: jest.fn().mockResolvedValue(undefined),
+    isConnected: true
 }));
 
 const AuthService = require('../src/services/authService');
