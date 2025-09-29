@@ -12,13 +12,37 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-# Configuration
-TEST_DB_NAME="adserver_test"
-REDIS_URL="redis://localhost:6379"
-POSTGRES_USER="adserver"
-POSTGRES_PASSWORD="dev_password"
-POSTGRES_HOST="localhost"
-POSTGRES_PORT="5432"
+# Parse database details from DATABASE_URL if provided
+parsed_db_host=""
+parsed_db_port=""
+parsed_db_user=""
+parsed_db_pass=""
+parsed_db_name=""
+if [ -n "$DATABASE_URL" ]; then
+    parsed_db_host=$(printf '%s' "$DATABASE_URL" | sed -E 's|.*://([^@]+@)?([^:/]+).*|\2|')
+    parsed_db_port=$(printf '%s' "$DATABASE_URL" | sed -E 's|.*://([^@]+@)?[^:/]+:([0-9]+).*|\2|')
+    parsed_db_user=$(printf '%s' "$DATABASE_URL" | sed -E 's|.*://([^:/]+).*|\1|' | sed -E 's|:.*||')
+    parsed_db_pass=$(printf '%s' "$DATABASE_URL" | sed -E 's|.*://[^:]+:([^@]+)@.*|\1|')
+    parsed_db_name=$(printf '%s' "$DATABASE_URL" | sed -E 's|.*/([^/?]+).*|\1|')
+fi
+
+# Configuration (allow environment overrides)
+TEST_DB_NAME=${TEST_DB_NAME:-${parsed_db_name:-adserver_test}}
+REDIS_URL=${REDIS_URL:-redis://localhost:6379}
+POSTGRES_USER=${POSTGRES_USER:-${parsed_db_user:-adserver}}
+POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-${parsed_db_pass:-dev_password}}
+POSTGRES_HOST=${POSTGRES_HOST:-${parsed_db_host:-localhost}}
+POSTGRES_PORT=${POSTGRES_PORT:-${parsed_db_port:-5432}}
+
+# Derive Redis host/port for readiness checks
+parsed_redis_host=""
+parsed_redis_port=""
+if [ -n "$REDIS_URL" ]; then
+    parsed_redis_host=$(printf '%s' "$REDIS_URL" | sed -E 's|.*://([^:/]+).*|\1|')
+    parsed_redis_port=$(printf '%s' "$REDIS_URL" | sed -E 's|.*://[^:/]+:([0-9]+).*|\1|')
+fi
+REDIS_HOST=${REDIS_HOST:-${parsed_redis_host:-localhost}}
+REDIS_PORT=${REDIS_PORT:-${parsed_redis_port:-6379}}
 
 # Function to print colored output
 print_status() {
@@ -40,13 +64,14 @@ print_error() {
 # Function to check if service is running
 check_service() {
     local service=$1
-    local port=$2
+    local host=$2
+    local port=$3
 
-    if nc -z localhost $port 2>/dev/null; then
-        print_success "$service is running on port $port"
+    if nc -z "$host" "$port" 2>/dev/null; then
+        print_success "$service is running on $host:$port"
         return 0
     else
-        print_error "$service is not running on port $port"
+        print_error "$service is not running on $host:$port"
         return 1
     fi
 }
@@ -54,13 +79,14 @@ check_service() {
 # Function to wait for service
 wait_for_service() {
     local service=$1
-    local port=$2
-    local timeout=${3:-30}
+    local host=$2
+    local port=$3
+    local timeout=${4:-30}
 
-    print_status "Waiting for $service on port $port..."
+    print_status "Waiting for $service on $host:$port..."
 
-    for i in $(seq 1 $timeout); do
-        if nc -z localhost $port 2>/dev/null; then
+    for _ in $(seq 1 $timeout); do
+        if nc -z "$host" "$port" 2>/dev/null; then
             print_success "$service is ready"
             return 0
         fi
@@ -75,14 +101,26 @@ wait_for_service() {
 setup_test_env() {
     print_status "Setting up test environment..."
 
-    # Check if PostgreSQL is running
-    if ! check_service "PostgreSQL" 5432; then
+    # Check services
+    if ! check_service "PostgreSQL" "$POSTGRES_HOST" "$POSTGRES_PORT"; then
+        if [ "${INSIDE_DOCKER_TEST:-false}" = "true" ]; then
+            print_error "PostgreSQL is required for tests. Please start PostgreSQL service."
+            exit 1
+        fi
+
+        if command -v docker >/dev/null 2>&1; then
+            print_warning "PostgreSQL not detected locally. Running Docker-based test runner..."
+            local project_root
+            project_root=$(cd "$(dirname "$0")/../../.." && pwd)
+            (cd "$project_root" && ./scripts/test-docker.sh test)
+            exit $?
+        fi
+
         print_error "PostgreSQL is required for tests. Please start PostgreSQL service."
         exit 1
     fi
 
-    # Check if Redis is running
-    if ! check_service "Redis" 6379; then
+    if ! check_service "Redis" "$REDIS_HOST" "$REDIS_PORT"; then
         print_warning "Redis is not running. Tests will use Redis mocks."
     fi
 
@@ -90,9 +128,9 @@ setup_test_env() {
     print_status "Setting up test database..."
     export PGPASSWORD=$POSTGRES_PASSWORD
 
-    if ! psql -h $POSTGRES_HOST -p $POSTGRES_PORT -U $POSTGRES_USER -lqt | cut -d \| -f 1 | grep -qw $TEST_DB_NAME; then
+    if ! psql -h "$POSTGRES_HOST" -p "$POSTGRES_PORT" -U "$POSTGRES_USER" -lqt | cut -d \| -f 1 | grep -qw "$TEST_DB_NAME"; then
         print_status "Creating test database: $TEST_DB_NAME"
-        createdb -h $POSTGRES_HOST -p $POSTGRES_PORT -U $POSTGRES_USER $TEST_DB_NAME
+        createdb -h "$POSTGRES_HOST" -p "$POSTGRES_PORT" -U "$POSTGRES_USER" "$TEST_DB_NAME"
         print_success "Test database created"
     else
         print_status "Test database already exists"
@@ -140,7 +178,7 @@ cleanup_test_env() {
     if [ -n "$DATABASE_URL" ]; then
         print_status "Cleaning up test database..."
         export PGPASSWORD=$POSTGRES_PASSWORD
-        psql -h $POSTGRES_HOST -p $POSTGRES_PORT -U $POSTGRES_USER -d $TEST_DB_NAME -c "
+        psql -h "$POSTGRES_HOST" -p "$POSTGRES_PORT" -U "$POSTGRES_USER" -d "$TEST_DB_NAME" -c "
             DELETE FROM users WHERE email LIKE '%test%';
         " 2>/dev/null || true
     fi

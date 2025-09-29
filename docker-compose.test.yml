@@ -52,12 +52,13 @@ services:
       LOG_LEVEL: error
       RATE_LIMIT_WINDOW_MS: 900000
       RATE_LIMIT_MAX_REQUESTS: 1000
+      INSIDE_DOCKER_TEST: 'true'
     volumes:
       - ./services/api-gateway/coverage:/app/coverage
       - ./services/api-gateway/logs:/app/logs
     networks:
       - test-network
-    command: ./scripts/test-all.sh test
+    command: ./scripts/test-all.sh ${TEST_COMMAND:-test}
 
 volumes:
   postgres_test_data:

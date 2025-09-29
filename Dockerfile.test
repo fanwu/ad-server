@@ -1,16 +1,17 @@
 FROM node:20-alpine
 
 # Install PostgreSQL client for database setup
-RUN apk add --no-cache postgresql-client redis
+RUN apk add --no-cache bash postgresql-client redis netcat-openbsd
 
 # Set working directory
 WORKDIR /app
 
 # Copy package files
 COPY package*.json ./
+COPY services/api-gateway/package.json ./services/api-gateway/
 
 # Install dependencies (including dev dependencies for testing)
-RUN npm ci
+RUN npm ci --workspaces --include-workspace-root
 
 # Copy application code
 COPY . .
@@ -29,7 +30,7 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
   CMD node -e "console.log('Health check passed')" || exit 1
 
 # Use bash as entrypoint for script execution
-ENTRYPOINT ["/bin/sh", "-c"]
+ENTRYPOINT ["/bin/bash", "-c"]
 
 # Default command
 CMD ["./scripts/test-all.sh test"]
