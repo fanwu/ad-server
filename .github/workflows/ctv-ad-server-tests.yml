@@ -73,7 +73,6 @@ jobs:
       with:
         node-version: ${{ matrix.node-version }}
         cache: 'npm'
-        cache-dependency-path: package-lock.json
 
     - name: Install dependencies
       run: ./scripts/test-all.sh install
@@ -87,10 +86,11 @@ jobs:
 
     - name: Wait for Redis
       run: |
-        until redis-cli -h localhost -p 6379 ping; do
+        until nc -z localhost 6379; do
           echo "Waiting for Redis..."
           sleep 2
         done
+        echo "Redis is ready"
 
     - name: Setup test environment
       env:
