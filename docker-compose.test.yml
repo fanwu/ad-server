@@ -1,0 +1,68 @@
+version: '3.8'
+
+services:
+  postgres-test:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: adserver
+      POSTGRES_PASSWORD: dev_password
+      POSTGRES_DB: adserver_test
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_test_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U adserver -d adserver_test"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - test-network
+
+  redis-test:
+    image: redis:7-alpine
+    ports:
+      - "6380:6379"
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_test_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - test-network
+
+  api-gateway-test:
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+    depends_on:
+      postgres-test:
+        condition: service_healthy
+      redis-test:
+        condition: service_healthy
+    environment:
+      NODE_ENV: test
+      DATABASE_URL: postgresql://adserver:dev_password@postgres-test:5432/adserver_test
+      DATABASE_TEST_URL: postgresql://adserver:dev_password@postgres-test:5432/adserver_test
+      REDIS_URL: redis://redis-test:6379
+      JWT_SECRET: test-jwt-secret-key-for-docker-testing-only
+      LOG_LEVEL: error
+      RATE_LIMIT_WINDOW_MS: 900000
+      RATE_LIMIT_MAX_REQUESTS: 1000
+    volumes:
+      - ./services/api-gateway/coverage:/app/coverage
+      - ./services/api-gateway/logs:/app/logs
+    networks:
+      - test-network
+    command: ./scripts/test-all.sh test
+
+volumes:
+  postgres_test_data:
+  redis_test_data:
+
+networks:
+  test-network:
+    driver: bridge

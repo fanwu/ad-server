@@ -8,7 +8,14 @@
     "start": "node src/server.js",
     "test": "jest",
     "test:watch": "jest --watch",
-    "test:coverage": "jest --coverage"
+    "test:coverage": "jest --coverage",
+    "test:unit": "jest --testPathPattern=\"authService|middleware\"",
+    "test:integration": "jest --testPathPattern=\"integration\"",
+    "test:security": "jest --testPathPattern=\"security|rateLimiting|errorHandling\"",
+    "test:ci": "scripts/test.sh ci",
+    "test:all": "scripts/test.sh all",
+    "audit:security": "npm audit --audit-level=moderate",
+    "clean:test": "rm -rf coverage/ logs/test-*"
   },
   "dependencies": {
     "express": "^4.18.2",

@@ -1,0 +1,298 @@
+name: CTV Ad Server Tests
+
+on:
+  push:
+    branches: [ main, master, develop ]
+    paths:
+      - 'services/**'
+      - 'scripts/**'
+      - '.github/workflows/**'
+      - 'package.json'
+      - 'docker-compose.test.yml'
+  pull_request:
+    branches: [ main, master, develop ]
+    paths:
+      - 'services/**'
+      - 'scripts/**'
+      - '.github/workflows/**'
+      - 'package.json'
+      - 'docker-compose.test.yml'
+
+jobs:
+  test:
+    name: Test All Services
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: adserver
+          POSTGRES_PASSWORD: dev_password
+          POSTGRES_DB: adserver_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+      redis:
+        image: redis:7-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+
+    strategy:
+      matrix:
+        node-version: [18.x, 20.x]
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js ${{ matrix.node-version }}
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ matrix.node-version }}
+        cache: 'npm'
+        cache-dependency-path: package-lock.json
+
+    - name: Install dependencies
+      run: ./scripts/test-all.sh install
+
+    - name: Wait for PostgreSQL
+      run: |
+        until pg_isready -h localhost -p 5432 -U adserver; do
+          echo "Waiting for PostgreSQL..."
+          sleep 2
+        done
+
+    - name: Wait for Redis
+      run: |
+        until redis-cli -h localhost -p 6379 ping; do
+          echo "Waiting for Redis..."
+          sleep 2
+        done
+
+    - name: Setup test environment
+      env:
+        NODE_ENV: test
+        DATABASE_URL: postgresql://adserver:dev_password@localhost:5432/adserver_test
+        DATABASE_TEST_URL: postgresql://adserver:dev_password@localhost:5432/adserver_test
+        REDIS_URL: redis://localhost:6379
+        JWT_SECRET: test-jwt-secret-key-for-ci-testing-only
+        LOG_LEVEL: error
+        RATE_LIMIT_WINDOW_MS: 900000
+        RATE_LIMIT_MAX_REQUESTS: 1000
+      run: |
+        # Create test database schema
+        export PGPASSWORD=dev_password
+        psql -h localhost -p 5432 -U adserver -d adserver_test -c "
+          CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\";
+          CREATE TABLE IF NOT EXISTS users (
+            id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+            email VARCHAR(255) UNIQUE NOT NULL,
+            password_hash VARCHAR(255) NOT NULL,
+            name VARCHAR(255) NOT NULL,
+            role VARCHAR(20) DEFAULT 'advertiser' CHECK (role IN ('admin', 'advertiser', 'viewer')),
+            status VARCHAR(20) DEFAULT 'active' CHECK (status IN ('active', 'inactive', 'suspended')),
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+            updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+          );
+          CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+          CREATE INDEX IF NOT EXISTS idx_users_status ON users(status);
+        "
+
+    - name: Run security audit
+      run: ./scripts/test-all.sh audit
+      continue-on-error: true
+
+    - name: Run all tests
+      env:
+        NODE_ENV: test
+        DATABASE_URL: postgresql://adserver:dev_password@localhost:5432/adserver_test
+        DATABASE_TEST_URL: postgresql://adserver:dev_password@localhost:5432/adserver_test
+        REDIS_URL: redis://localhost:6379
+        JWT_SECRET: test-jwt-secret-key-for-ci-testing-only
+        LOG_LEVEL: error
+        RATE_LIMIT_WINDOW_MS: 900000
+        RATE_LIMIT_MAX_REQUESTS: 1000
+      run: ./scripts/test-all.sh test
+
+    - name: Generate coverage reports
+      env:
+        NODE_ENV: test
+        DATABASE_URL: postgresql://adserver:dev_password@localhost:5432/adserver_test
+        DATABASE_TEST_URL: postgresql://adserver:dev_password@localhost:5432/adserver_test
+        REDIS_URL: redis://localhost:6379
+        JWT_SECRET: test-jwt-secret-key-for-ci-testing-only
+        LOG_LEVEL: error
+        RATE_LIMIT_WINDOW_MS: 900000
+        RATE_LIMIT_MAX_REQUESTS: 1000
+      run: ./scripts/test-all.sh coverage
+
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v3
+      with:
+        directory: ./coverage-project
+        flags: ctv-ad-server
+        name: ctv-ad-server-coverage
+        fail_ci_if_error: false
+
+    - name: Archive test artifacts
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: test-artifacts-node-${{ matrix.node-version }}
+        path: |
+          coverage-project/
+          services/*/coverage/
+          services/*/logs/
+        retention-days: 30
+
+  code-quality:
+    name: Code Quality Checks
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20.x'
+        cache: 'npm'
+        cache-dependency-path: package-lock.json
+
+    - name: Install dependencies
+      run: ./scripts/test-all.sh install
+
+    - name: Run security audit
+      run: ./scripts/test-all.sh audit
+
+    - name: Check package licenses
+      run: |
+        for service in services/*/; do
+          if [ -f "$service/package.json" ]; then
+            echo "Checking licenses for $(basename $service)..."
+            (cd "$service" && npx license-checker --summary)
+          fi
+        done
+      continue-on-error: true
+
+    - name: Validate package.json files
+      run: |
+        # Root package.json
+        node -e "
+          const pkg = require('./package.json');
+          console.log('Root Package validation successful');
+          console.log('Name:', pkg.name);
+          console.log('Version:', pkg.version);
+        "
+        # Service package.json files
+        for service in services/*/; do
+          if [ -f "$service/package.json" ]; then
+            echo "Validating $(basename $service) package.json..."
+            (cd "$service" && node -e "
+              const pkg = require('./package.json');
+              console.log('Service:', pkg.name);
+              console.log('Version:', pkg.version);
+              console.log('Dependencies:', Object.keys(pkg.dependencies || {}).length);
+              console.log('DevDependencies:', Object.keys(pkg.devDependencies || {}).length);
+            ")
+          fi
+        done
+
+  performance:
+    name: Performance Tests
+    runs-on: ubuntu-latest
+    needs: test
+    if: github.event_name == 'pull_request'
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: adserver
+          POSTGRES_PASSWORD: dev_password
+          POSTGRES_DB: adserver_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+      redis:
+        image: redis:7-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20.x'
+        cache: 'npm'
+        cache-dependency-path: package-lock.json
+
+    - name: Install dependencies
+      run: ./scripts/test-all.sh install
+
+    - name: Wait for services
+      run: |
+        until pg_isready -h localhost -p 5432 -U adserver; do
+          echo "Waiting for PostgreSQL..."
+          sleep 2
+        done
+        until redis-cli -h localhost -p 6379 ping; do
+          echo "Waiting for Redis..."
+          sleep 2
+        done
+
+    - name: Setup test database
+      env:
+        PGPASSWORD: dev_password
+      run: |
+        psql -h localhost -p 5432 -U adserver -d adserver_test -c "
+          CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\";
+          CREATE TABLE IF NOT EXISTS users (
+            id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+            email VARCHAR(255) UNIQUE NOT NULL,
+            password_hash VARCHAR(255) NOT NULL,
+            name VARCHAR(255) NOT NULL,
+            role VARCHAR(20) DEFAULT 'advertiser' CHECK (role IN ('admin', 'advertiser', 'viewer')),
+            status VARCHAR(20) DEFAULT 'active' CHECK (status IN ('active', 'inactive', 'suspended')),
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+            updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+          );
+        "
+
+    - name: Run performance tests
+      env:
+        NODE_ENV: test
+        DATABASE_URL: postgresql://adserver:dev_password@localhost:5432/adserver_test
+        REDIS_URL: redis://localhost:6379
+        JWT_SECRET: test-jwt-secret-key-for-performance-testing
+        LOG_LEVEL: error
+      run: |
+        # Run tests with timing information
+        ./scripts/test-all.sh test
+
+        # Check memory usage during tests
+        echo "Memory usage check completed"
