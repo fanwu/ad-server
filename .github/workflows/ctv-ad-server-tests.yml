@@ -17,6 +17,18 @@ on:
       - '.github/workflows/**'
       - 'package.json'
       - 'docker-compose.test.yml'
+  workflow_dispatch:
+    inputs:
+      test_type:
+        description: 'Type of tests to run'
+        required: false
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - unit
+          - integration
+          - security
 
 jobs:
   test:
@@ -113,7 +125,7 @@ jobs:
       run: ./scripts/test-all.sh audit
       continue-on-error: true
 
-    - name: Run all tests
+    - name: Run tests
       env:
         NODE_ENV: test
         DATABASE_URL: postgresql://adserver:dev_password@localhost:5432/adserver_test
@@ -123,7 +135,7 @@ jobs:
         LOG_LEVEL: error
         RATE_LIMIT_WINDOW_MS: 900000
         RATE_LIMIT_MAX_REQUESTS: 1000
-      run: ./scripts/test-all.sh test
+      run: ./scripts/test-all.sh test ${{ github.event.inputs.test_type || 'all' }}
 
     - name: Generate coverage reports
       env:
