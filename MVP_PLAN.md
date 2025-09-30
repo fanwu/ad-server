@@ -57,6 +57,40 @@
 
 ---
 
+## 🛠️ MVP Technology Stack
+
+### Core Services Architecture
+Following the original plan but with simplified configuration:
+
+| Service | Technology | Alternative | MVP Rationale |
+|---------|------------|-------------|---------------|
+| **API Gateway** | **Node.js/Express** | Kong | Faster development, existing codebase |
+| **Ad Decision Engine** | **Go** | Rust | High performance, low latency (same as full plan) |
+| **Campaign Management** | **Node.js/TypeScript** | Python | Rapid development, consistent with gateway |
+
+### Data Layer
+| Component | Technology | MVP Justification |
+|-----------|------------|-------------------|
+| **Primary Database** | **PostgreSQL 15** | Already implemented, ACID compliance |
+| **Caching** | **Redis 7** | Already implemented, session management |
+| **File Storage** | **AWS S3** | Creative assets, proven scalability |
+
+### Infrastructure & Development
+| Component | Technology | MVP Configuration |
+|-----------|------------|-------------------|
+| **Container Platform** | **Docker + EKS** | Simplified single-node setup |
+| **CI/CD** | **GitHub Actions** | Already implemented and working |
+| **Testing** | **Jest** | Comprehensive test suite (194 tests) |
+| **Monitoring** | **CloudWatch** | Basic AWS monitoring |
+
+### Key Simplifications for MVP
+- **Ad Decision Engine**: Keep Go for performance but minimal targeting logic
+- **No Complex Microservices**: Fewer services, simpler communication
+- **Single Database**: No analytics DB separation initially
+- **Basic Infrastructure**: Single region, minimal auto-scaling
+
+---
+
 ## 📊 MVP Database Schema (Simplified)
 
 ### Core Tables Only
@@ -303,11 +337,14 @@ set -e
 
 echo "🚀 Deploying CTV Ad Server MVP to AWS"
 
-# Build and push single service
-docker build -t ctv-ad-server-mvp services/api-gateway/
+# Build and push MVP services
+docker build -t ctv-api-gateway services/api-gateway/
+docker build -t ctv-ad-decision services/ad-decision-engine/
 aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin $ECR_REGISTRY
-docker tag ctv-ad-server-mvp:latest $ECR_REGISTRY/ctv-ad-server-mvp:latest
-docker push $ECR_REGISTRY/ctv-ad-server-mvp:latest
+docker tag ctv-api-gateway:latest $ECR_REGISTRY/ctv-api-gateway:latest
+docker tag ctv-ad-decision:latest $ECR_REGISTRY/ctv-ad-decision:latest
+docker push $ECR_REGISTRY/ctv-api-gateway:latest
+docker push $ECR_REGISTRY/ctv-ad-decision:latest
 
 # Deploy infrastructure
 cd infrastructure/terraform
@@ -342,10 +379,11 @@ echo "🌐 URL: $(kubectl get ingress mvp-ingress -o jsonpath='{.status.loadBala
 - Link creatives to campaigns
 
 ### Week 2: Ad Serving & Testing (Oct 8-14)
-**Days 1-3: Ad Serving Logic**
-- Simple ad request/response
+**Days 1-3: Ad Serving Logic & Decision Engine**
+- Implement Go-based ad decision engine (minimal version)
+- Simple ad request/response endpoints
 - Basic impression tracking
-- No targeting - just return available ads
+- No targeting - just return available ads based on campaign status
 
 **Days 4-5: Testing Implementation**
 - Comprehensive test suite for MVP features
