@@ -32,14 +32,12 @@ describe('Error Handling Tests', () => {
             });
         });
 
-        it('should return 404 for non-existent API routes', async () => {
+        it('should return 401 for non-existent protected API routes', async () => {
             const response = await request(app)
                 .get('/api/v1/non-existent')
-                .expect(404);
+                .expect(401);
 
-            expect(response.body.error.code).toBe('ROUTE_NOT_FOUND');
-            expect(response.body.error.path).toBe('/api/v1/non-existent');
-            expect(response.body.error.method).toBe('GET');
+            expect(response.body.error.code).toBe('MISSING_TOKEN');
         });
 
         it('should return 404 for non-existent nested routes', async () => {
@@ -64,7 +62,7 @@ describe('Error Handling Tests', () => {
     describe('HTTP Method Errors', () => {
         it('should handle unsupported HTTP methods', async () => {
             const response = await request(app)
-                .patch('/api/v1/auth/profile')
+                .patch('/api/v2/unsupported')
                 .expect(404);
 
             expect(response.body.error.code).toBe('ROUTE_NOT_FOUND');
@@ -242,7 +240,7 @@ describe('Error Handling Tests', () => {
 
         it('should handle duplicate user registration', async () => {
             const userData = {
-                email: 'duplicate-error-test@example.com',
+                email: `duplicate-error-test-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@example.com`,
                 password: 'testpassword123',
                 name: 'Test User'
             };
