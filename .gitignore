@@ -124,6 +124,9 @@ redis_test_data/
 config/local.json
 config/local.js
 
+# Claude Code session data
+.claude
+
 # Mac specific
 .AppleDouble
 .LSOverride

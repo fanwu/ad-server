@@ -1,48 +1,31 @@
 const express = require('express');
 const logger = require('../utils/logger');
+const campaignService = require('../services/campaignService');
+const {
+    validateCreateCampaign,
+    validateUpdateCampaign,
+    validateUpdateStatus,
+    validateListCampaigns
+} = require('../middleware/campaignValidation');
 
 const router = express.Router();
 
 // Get all campaigns for the authenticated user
-router.get('/', async (req, res) => {
+router.get('/', validateListCampaigns, async (req, res) => {
     try {
-        // For now, return mock data since we haven't implemented campaign service yet
-        const mockCampaigns = [
-            {
-                id: '550e8400-e29b-41d4-a716-446655440001',
-                name: 'Summer Product Launch',
-                status: 'active',
-                budget: 10000.00,
-                spent: 2500.00,
-                impressions: 125000,
-                clicks: 1250,
-                createdAt: '2024-01-15T10:00:00Z'
-            },
-            {
-                id: '550e8400-e29b-41d4-a716-446655440002',
-                name: 'Holiday Sale Campaign',
-                status: 'paused',
-                budget: 5000.00,
-                spent: 3200.00,
-                impressions: 80000,
-                clicks: 960,
-                createdAt: '2024-02-01T14:30:00Z'
-            }
-        ];
+        const campaigns = await campaignService.getCampaigns(req.user.id, req.query);
 
         logger.info('Campaigns retrieved', {
             requestId: req.requestId,
             userId: req.user.id,
-            campaignCount: mockCampaigns.length
+            campaignCount: campaigns.length
         });
 
         res.json({
-            campaigns: mockCampaigns,
-            total: mockCampaigns.length,
-            user: {
-                id: req.user.id,
-                email: req.user.email
-            }
+            campaigns: campaigns,
+            total: campaigns.length,
+            page: req.query.page || 1,
+            limit: req.query.limit || 20
         });
     } catch (error) {
         logger.error('Failed to retrieve campaigns', {
@@ -64,31 +47,25 @@ router.get('/', async (req, res) => {
 router.get('/:id', async (req, res) => {
     try {
         const campaignId = req.params.id;
+        const campaign = await campaignService.getCampaignById(campaignId, req.user.id);
 
-        // Mock campaign data - in real implementation, this would query the database
-        const mockCampaign = {
-            id: campaignId,
-            name: 'Summer Product Launch',
-            description: 'Promoting our new summer product line',
-            status: 'active',
-            budget: 10000.00,
-            dailyBudget: 500.00,
-            spent: 2500.00,
-            startDate: '2024-01-15T00:00:00Z',
-            endDate: '2024-03-15T23:59:59Z',
-            targeting: {
-                countries: ['US', 'CA'],
-                deviceTypes: ['smart_tv', 'streaming_device'],
-                contentCategories: ['entertainment', 'sports']
-            },
-            metrics: {
-                impressions: 125000,
-                clicks: 1250,
-                ctr: 1.0,
-                completionRate: 85.5
-            },
-            createdAt: '2024-01-15T10:00:00Z',
-            updatedAt: '2024-01-20T15:30:00Z'
+        if (!campaign) {
+            return res.status(404).json({
+                error: {
+                    message: 'Campaign not found',
+                    code: 'CAMPAIGN_NOT_FOUND'
+                }
+            });
+        }
+
+        // Calculate basic metrics
+        const metrics = {
+            impressions: parseInt(campaign.total_impressions) || 0,
+            clicks: parseInt(campaign.total_clicks) || 0,
+            ctr: campaign.total_impressions > 0
+                ? ((campaign.total_clicks / campaign.total_impressions) * 100).toFixed(2)
+                : 0,
+            spend: parseFloat(campaign.total_spend) || 0
         };
 
         logger.info('Campaign retrieved', {
@@ -98,7 +75,10 @@ router.get('/:id', async (req, res) => {
         });
 
         res.json({
-            campaign: mockCampaign
+            campaign: {
+                ...campaign,
+                metrics
+            }
         });
     } catch (error) {
         logger.error('Failed to retrieve campaign', {
@@ -117,34 +97,210 @@ router.get('/:id', async (req, res) => {
     }
 });
 
-// Create new campaign (placeholder)
-router.post('/', async (req, res) => {
-    res.status(501).json({
-        error: {
-            message: 'Campaign creation not yet implemented',
-            code: 'NOT_IMPLEMENTED'
-        }
-    });
+// Create new campaign
+router.post('/', validateCreateCampaign, async (req, res) => {
+    try {
+        const campaign = await campaignService.createCampaign(req.body, req.user.id);
+
+        logger.info('Campaign created', {
+            requestId: req.requestId,
+            userId: req.user.id,
+            campaignId: campaign.id,
+            campaignName: campaign.name
+        });
+
+        res.status(201).json({
+            message: 'Campaign created successfully',
+            campaign
+        });
+    } catch (error) {
+        logger.error('Failed to create campaign', {
+            requestId: req.requestId,
+            error: error.message,
+            userId: req.user?.id
+        });
+
+        res.status(500).json({
+            error: {
+                message: 'Failed to create campaign',
+                code: 'CAMPAIGN_CREATION_FAILED'
+            }
+        });
+    }
 });
 
-// Update campaign (placeholder)
-router.put('/:id', async (req, res) => {
-    res.status(501).json({
-        error: {
-            message: 'Campaign update not yet implemented',
-            code: 'NOT_IMPLEMENTED'
+// Update campaign
+router.put('/:id', validateUpdateCampaign, async (req, res) => {
+    try {
+        const campaignId = req.params.id;
+        const campaign = await campaignService.updateCampaign(campaignId, req.body, req.user.id);
+
+        if (!campaign) {
+            return res.status(404).json({
+                error: {
+                    message: 'Campaign not found or you do not have permission to update it',
+                    code: 'CAMPAIGN_NOT_FOUND'
+                }
+            });
         }
-    });
+
+        logger.info('Campaign updated', {
+            requestId: req.requestId,
+            userId: req.user.id,
+            campaignId,
+            updates: Object.keys(req.body)
+        });
+
+        res.json({
+            message: 'Campaign updated successfully',
+            campaign
+        });
+    } catch (error) {
+        logger.error('Failed to update campaign', {
+            requestId: req.requestId,
+            error: error.message,
+            userId: req.user?.id,
+            campaignId: req.params.id
+        });
+
+        res.status(500).json({
+            error: {
+                message: 'Failed to update campaign',
+                code: 'CAMPAIGN_UPDATE_FAILED'
+            }
+        });
+    }
 });
 
-// Delete campaign (placeholder)
+// Update campaign status
+router.put('/:id/status', validateUpdateStatus, async (req, res) => {
+    try {
+        const campaignId = req.params.id;
+        const { status } = req.body;
+
+        const campaign = await campaignService.updateCampaignStatus(campaignId, status, req.user.id);
+
+        if (!campaign) {
+            return res.status(404).json({
+                error: {
+                    message: 'Campaign not found or you do not have permission to update it',
+                    code: 'CAMPAIGN_NOT_FOUND'
+                }
+            });
+        }
+
+        logger.info('Campaign status updated', {
+            requestId: req.requestId,
+            userId: req.user.id,
+            campaignId,
+            newStatus: status
+        });
+
+        res.json({
+            message: `Campaign status updated to ${status}`,
+            campaign
+        });
+    } catch (error) {
+        logger.error('Failed to update campaign status', {
+            requestId: req.requestId,
+            error: error.message,
+            userId: req.user?.id,
+            campaignId: req.params.id
+        });
+
+        res.status(500).json({
+            error: {
+                message: 'Failed to update campaign status',
+                code: 'STATUS_UPDATE_FAILED'
+            }
+        });
+    }
+});
+
+// Delete campaign
 router.delete('/:id', async (req, res) => {
-    res.status(501).json({
-        error: {
-            message: 'Campaign deletion not yet implemented',
-            code: 'NOT_IMPLEMENTED'
+    try {
+        const campaignId = req.params.id;
+        const hardDelete = req.query.hard === 'true';
+
+        const result = await campaignService.deleteCampaign(campaignId, req.user.id, hardDelete);
+
+        if (!result) {
+            return res.status(404).json({
+                error: {
+                    message: 'Campaign not found or you do not have permission to delete it',
+                    code: 'CAMPAIGN_NOT_FOUND'
+                }
+            });
         }
-    });
+
+        logger.info('Campaign deleted', {
+            requestId: req.requestId,
+            userId: req.user.id,
+            campaignId,
+            hardDelete
+        });
+
+        res.json({
+            message: hardDelete ? 'Campaign permanently deleted' : 'Campaign marked as completed',
+            campaignId
+        });
+    } catch (error) {
+        logger.error('Failed to delete campaign', {
+            requestId: req.requestId,
+            error: error.message,
+            userId: req.user?.id,
+            campaignId: req.params.id
+        });
+
+        res.status(500).json({
+            error: {
+                message: 'Failed to delete campaign',
+                code: 'CAMPAIGN_DELETION_FAILED'
+            }
+        });
+    }
+});
+
+// Get campaign statistics
+router.get('/:id/stats', async (req, res) => {
+    try {
+        const campaignId = req.params.id;
+        const stats = await campaignService.getCampaignStats(campaignId, req.user.id);
+
+        if (!stats) {
+            return res.status(404).json({
+                error: {
+                    message: 'Campaign not found',
+                    code: 'CAMPAIGN_NOT_FOUND'
+                }
+            });
+        }
+
+        logger.info('Campaign stats retrieved', {
+            requestId: req.requestId,
+            userId: req.user.id,
+            campaignId
+        });
+
+        res.json({
+            stats
+        });
+    } catch (error) {
+        logger.error('Failed to retrieve campaign stats', {
+            requestId: req.requestId,
+            error: error.message,
+            userId: req.user?.id,
+            campaignId: req.params.id
+        });
+
+        res.status(500).json({
+            error: {
+                message: 'Failed to retrieve campaign stats',
+                code: 'STATS_RETRIEVAL_FAILED'
+            }
+        });
+    }
 });
 
 module.exports = router;

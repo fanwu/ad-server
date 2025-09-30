@@ -11,6 +11,7 @@ const loggingMiddleware = require('./middleware/logging');
 // Route imports
 const authRoutes = require('./routes/auth');
 const campaignRoutes = require('./routes/campaigns');
+const creativeRoutes = require('./routes/creatives');
 const healthRoutes = require('./routes/health');
 
 const app = express();
@@ -53,6 +54,7 @@ app.use('/api/v1/auth', authRoutes);
 
 // Protected routes
 app.use('/api/v1/campaigns', authMiddleware, campaignRoutes);
+app.use('/api/v1', authMiddleware, creativeRoutes);
 
 // Root endpoint
 app.get('/', (req, res) => {
@@ -64,7 +66,8 @@ app.get('/', (req, res) => {
         endpoints: {
             health: '/health',
             auth: '/api/v1/auth',
-            campaigns: '/api/v1/campaigns'
+            campaigns: '/api/v1/campaigns',
+            creatives: '/api/v1/campaigns/:id/creatives'
         }
     });
 });
