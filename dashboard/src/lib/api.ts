@@ -3,6 +3,7 @@ import type { Creative, UploadCreativeDto } from '@/types/creative';
 import type { User, LoginDto, AuthResponse } from '@/types/auth';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
+const TOKEN_KEY = 'auth_token';
 
 export class ApiError extends Error {
   constructor(public status: number, message: string, public data?: any) {
@@ -11,12 +12,30 @@ export class ApiError extends Error {
   }
 }
 
+// Token management
+export const tokenStorage = {
+  getToken: (): string | null => {
+    if (typeof window === 'undefined') return null;
+    return localStorage.getItem(TOKEN_KEY);
+  },
+  setToken: (token: string): void => {
+    if (typeof window === 'undefined') return;
+    localStorage.setItem(TOKEN_KEY, token);
+  },
+  removeToken: (): void => {
+    if (typeof window === 'undefined') return;
+    localStorage.removeItem(TOKEN_KEY);
+  },
+};
+
 async function fetchWithAuth(url: string, options: RequestInit = {}) {
+  const token = tokenStorage.getToken();
+
   const response = await fetch(url, {
     ...options,
-    credentials: 'include',
     headers: {
       'Content-Type': 'application/json',
+      ...(token && { 'Authorization': `Bearer ${token}` }),
       ...options.headers,
     },
   });
@@ -30,9 +49,14 @@ async function fetchWithAuth(url: string, options: RequestInit = {}) {
 }
 
 async function fetchWithAuthMultipart(url: string, options: RequestInit = {}) {
+  const token = tokenStorage.getToken();
+
   const response = await fetch(url, {
     ...options,
-    credentials: 'include',
+    headers: {
+      ...(token && { 'Authorization': `Bearer ${token}` }),
+      ...options.headers,
+    },
   });
 
   if (!response.ok) {

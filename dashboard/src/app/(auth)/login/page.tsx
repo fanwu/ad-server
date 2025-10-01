@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { authApi } from '@/lib/api';
+import { authApi, tokenStorage } from '@/lib/api';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -17,7 +17,8 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      await authApi.login({ email, password });
+      const response = await authApi.login({ email, password});
+      tokenStorage.setToken(response.tokens.accessToken);
       router.push('/dashboard');
       router.refresh();
     } catch (err: any) {

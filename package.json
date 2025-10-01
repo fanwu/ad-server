@@ -21,7 +21,7 @@
     "test:clean": "./scripts/test-all.sh clean",
     "test:load": "k6 run tools/testing/load-tests/api-gateway.js",
     "db:migrate": "node shared/database/migrate.js",
-    "db:seed": "npm run db:migrate && psql $DATABASE_URL -f shared/database/seeds/development.sql",
+    "db:seed": "npm run db:migrate && PGPASSWORD=dev_password psql -h localhost -U adserver -d adserver_dev -f shared/database/seeds/development.sql",
     "db:reset": "npm run db:drop && npm run db:create && npm run db:migrate && npm run db:seed",
     "db:drop": "docker-compose -f docker-compose.dev.yml exec postgres psql -U adserver -d postgres -c 'DROP DATABASE IF EXISTS adserver_dev;'",
     "db:create": "docker-compose -f docker-compose.dev.yml exec postgres psql -U adserver -d postgres -c 'CREATE DATABASE adserver_dev;'",
