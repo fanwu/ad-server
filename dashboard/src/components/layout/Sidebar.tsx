@@ -7,9 +7,9 @@ import { authApi, tokenStorage } from '@/lib/api';
 import { useRouter } from 'next/navigation';
 
 const navigation = [
-  { name: 'Dashboard', href: '/dashboard', icon: Home },
-  { name: 'Campaigns', href: '/dashboard/campaigns', icon: Folder },
-  { name: 'Analytics', href: '/dashboard/analytics', icon: BarChart3 },
+  { name: 'Home', href: '/', icon: Home },
+  { name: 'Campaigns', href: '/campaigns', icon: Folder },
+  { name: 'Analytics', href: '/analytics', icon: BarChart3 },
 ];
 
 export default function Sidebar() {

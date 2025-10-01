@@ -18,8 +18,10 @@ export default function LoginPage() {
 
     try {
       const response = await authApi.login({ email, password});
+      console.log('[Login] Received response:', { hasUser: !!response.user, hasToken: !!response.tokens?.accessToken });
       tokenStorage.setToken(response.tokens.accessToken);
-      router.push('/dashboard');
+      console.log('[Login] Token stored, navigating to home');
+      router.push('/');
       router.refresh();
     } catch (err: any) {
       setError(err.message || 'Login failed. Please check your credentials.');

@@ -196,7 +196,7 @@ export default function CampaignsPage() {
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                     <Link
-                      href={`/dashboard/campaigns/${campaign.id}`}
+                      href={`/campaigns/${campaign.id}`}
                       className="text-blue-600 hover:text-blue-900"
                     >
                       View Details

@@ -5,8 +5,16 @@ const API_URL = 'http://localhost:3000';
 
 test.describe('Dashboard Authentication Flow', () => {
   test.beforeEach(async ({ page }) => {
-    // Clear cookies before each test
+    // Clear cookies and localStorage before each test
     await page.context().clearCookies();
+
+    // Listen to console logs
+    page.on('console', (msg) => {
+      const type = msg.type();
+      if (type === 'log' || type === 'error' || type === 'warning') {
+        console.log(`[Browser ${type}]:`, msg.text());
+      }
+    });
   });
 
   test('should redirect to login when not authenticated', async ({ page }) => {
@@ -44,12 +52,12 @@ test.describe('Dashboard Authentication Flow', () => {
     await page.click('button[type="submit"]');
     console.log('🔘 Clicked login button');
 
-    // Wait for navigation to dashboard
+    // Wait for navigation to home page
     try {
-      await page.waitForURL('**/dashboard', { timeout: 10000 });
-      console.log('✅ Navigated to dashboard');
+      await page.waitForURL(/\/$/, { timeout: 10000 });
+      console.log('✅ Navigated to home page');
     } catch (error) {
-      console.error('❌ Failed to navigate to dashboard');
+      console.error('❌ Failed to navigate to home page');
       console.error('Current URL:', page.url());
 
       // Check for error messages
@@ -62,17 +70,17 @@ test.describe('Dashboard Authentication Flow', () => {
       throw error;
     }
 
-    // Verify we're on the dashboard
-    expect(page.url()).toContain('/dashboard');
+    // Verify we're on the home page
+    expect(page.url()).toMatch(/\/$/);
 
     // Check for dashboard elements
-    await expect(page.locator('text=Welcome back!')).toBeVisible({ timeout: 5000 });
-    console.log('✅ Dashboard loaded successfully');
+    await expect(page.locator('h1:has-text("Dashboard")')).toBeVisible({ timeout: 5000 });
+    console.log('✅ Home page loaded successfully');
 
     // Check sidebar navigation
-    await expect(page.locator('text=Dashboard')).toBeVisible();
-    await expect(page.locator('text=Campaigns')).toBeVisible();
-    await expect(page.locator('text=Analytics')).toBeVisible();
+    await expect(page.locator('nav a:has-text("Home")')).toBeVisible();
+    await expect(page.locator('nav a:has-text("Campaigns")')).toBeVisible();
+    await expect(page.locator('nav a:has-text("Analytics")')).toBeVisible();
     console.log('✅ Sidebar navigation visible');
   });
 
@@ -84,7 +92,7 @@ test.describe('Dashboard Authentication Flow', () => {
     await page.fill('input[type="email"]', 'advertiser@adserver.dev');
     await page.fill('input[type="password"]', 'password123');
     await page.click('button[type="submit"]');
-    await page.waitForURL('**/dashboard', { timeout: 10000 });
+    await page.waitForURL(/\/$/, { timeout: 10000 });
     console.log('✅ Logged in');
 
     // Navigate to campaigns
@@ -95,7 +103,7 @@ test.describe('Dashboard Authentication Flow', () => {
     expect(page.url()).toContain('/campaigns');
 
     // Check campaigns page elements
-    await expect(page.locator('h1')).toContainText('Campaigns');
+    await expect(page.locator('main h1')).toContainText('Campaigns');
     console.log('✅ Campaigns page title visible');
 
     // Should see search and filter
@@ -112,7 +120,7 @@ test.describe('Dashboard Authentication Flow', () => {
     await page.fill('input[type="email"]', 'advertiser@adserver.dev');
     await page.fill('input[type="password"]', 'password123');
     await page.click('button[type="submit"]');
-    await page.waitForURL('**/dashboard', { timeout: 10000 });
+    await page.waitForURL(/\/$/, { timeout: 10000 });
     console.log('✅ Logged in');
 
     // Click logout
@@ -154,7 +162,7 @@ test.describe('Dashboard Authentication Flow', () => {
     await page.fill('input[type="email"]', 'advertiser@adserver.dev');
     await page.fill('input[type="password"]', 'password123');
     await page.click('button[type="submit"]');
-    await page.waitForURL('**/dashboard', { timeout: 10000 });
+    await page.waitForURL(/\/$/, { timeout: 10000 });
     console.log('✅ Logged in');
 
     // Refresh the page
@@ -173,7 +181,7 @@ test.describe('Dashboard Authentication Flow', () => {
       throw new Error('Authentication not persisted after refresh');
     } else {
       console.log('✅ Still authenticated after refresh');
-      expect(currentUrl).toContain('/dashboard');
+      expect(currentUrl).toMatch(/\/$/);
     }
   });
 });
@@ -187,7 +195,7 @@ test.describe('API Integration', () => {
     await page.fill('input[type="email"]', 'advertiser@adserver.dev');
     await page.fill('input[type="password"]', 'password123');
     await page.click('button[type="submit"]');
-    await page.waitForURL('**/dashboard', { timeout: 10000 });
+    await page.waitForURL(/\/$/, { timeout: 10000 });
     console.log('✅ Logged in');
 
     // Navigate to campaigns - this should trigger API call
@@ -208,8 +216,9 @@ test.describe('API Integration', () => {
     }
 
     // Should see campaigns or empty state
-    const hasCampaigns = await page.locator('table, text=No campaigns found').isVisible();
-    expect(hasCampaigns).toBeTruthy();
+    const hasTable = await page.locator('table').isVisible();
+    const hasEmptyState = await page.locator('text=No campaigns found').isVisible();
+    expect(hasTable || hasEmptyState).toBeTruthy();
     console.log('✅ Campaigns page loaded successfully');
   });
 });

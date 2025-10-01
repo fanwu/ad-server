@@ -30,6 +30,7 @@ export const tokenStorage = {
 
 async function fetchWithAuth(url: string, options: RequestInit = {}) {
   const token = tokenStorage.getToken();
+  console.log('[fetchWithAuth] URL:', url, 'Token:', token ? `${token.substring(0, 20)}...` : 'NO TOKEN');
 
   const response = await fetch(url, {
     ...options,

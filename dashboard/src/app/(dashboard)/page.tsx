@@ -72,7 +72,7 @@ export default function DashboardPage() {
         <h2 className="text-lg font-semibold text-gray-900 mb-4">Quick Actions</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <Link
-            href="/dashboard/campaigns"
+            href="/campaigns"
             className="flex items-center p-4 border-2 border-gray-200 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition-all group"
           >
             <div className="bg-blue-100 rounded-lg p-3 group-hover:bg-blue-200 transition-colors">

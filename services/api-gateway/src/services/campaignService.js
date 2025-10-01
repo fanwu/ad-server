@@ -52,7 +52,7 @@ class CampaignService {
                 SELECT
                     c.*,
                     COALESCE(COUNT(DISTINCT cr.id), 0) as creative_count,
-                    COALESCE(SUM(cds.impressions), 0) as total_impressions
+                    COALESCE(SUM(cds.impressions_count), 0) as total_impressions
                 FROM campaigns c
                 LEFT JOIN creatives cr ON cr.campaign_id = c.id
                 LEFT JOIN campaign_daily_stats cds ON cds.campaign_id = c.id
@@ -104,9 +104,9 @@ class CampaignService {
                 SELECT
                     c.*,
                     COALESCE(COUNT(DISTINCT cr.id), 0) as creative_count,
-                    COALESCE(SUM(cds.impressions), 0) as total_impressions,
-                    COALESCE(SUM(cds.clicks), 0) as total_clicks,
-                    COALESCE(SUM(cds.spend), 0) as total_spend
+                    COALESCE(SUM(cds.impressions_count), 0) as total_impressions,
+                    COALESCE(SUM(cds.clicks_count), 0) as total_clicks,
+                    COALESCE(SUM(cds.spend_amount), 0) as total_spend
                 FROM campaigns c
                 LEFT JOIN creatives cr ON cr.campaign_id = c.id
                 LEFT JOIN campaign_daily_stats cds ON cds.campaign_id = c.id
@@ -267,18 +267,18 @@ class CampaignService {
                     c.name,
                     c.budget_total,
                     c.budget_spent,
-                    COALESCE(SUM(cds.impressions), 0) as total_impressions,
-                    COALESCE(SUM(cds.clicks), 0) as total_clicks,
-                    COALESCE(SUM(cds.completions), 0) as total_completions,
-                    COALESCE(SUM(cds.spend), 0) as total_spend,
+                    COALESCE(SUM(cds.impressions_count), 0) as total_impressions,
+                    COALESCE(SUM(cds.clicks_count), 0) as total_clicks,
+                    COALESCE(SUM(cds.completions_count), 0) as total_completions,
+                    COALESCE(SUM(cds.spend_amount), 0) as total_spend,
                     CASE
-                        WHEN SUM(cds.impressions) > 0
-                        THEN ROUND(SUM(cds.clicks)::numeric / SUM(cds.impressions) * 100, 2)
+                        WHEN SUM(cds.impressions_count) > 0
+                        THEN ROUND(SUM(cds.clicks_count)::numeric / SUM(cds.impressions_count) * 100, 2)
                         ELSE 0
                     END as ctr,
                     CASE
-                        WHEN SUM(cds.impressions) > 0
-                        THEN ROUND(SUM(cds.completions)::numeric / SUM(cds.impressions) * 100, 2)
+                        WHEN SUM(cds.impressions_count) > 0
+                        THEN ROUND(SUM(cds.completions_count)::numeric / SUM(cds.impressions_count) * 100, 2)
                         ELSE 0
                     END as completion_rate
                 FROM campaigns c
