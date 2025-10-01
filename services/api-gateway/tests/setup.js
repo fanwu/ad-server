@@ -45,6 +45,21 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+    // Clean up test data from database first
+    if (global.testPool) {
+        try {
+            // Clean up in reverse dependency order - only test data with specific patterns
+            await global.testPool.query("DELETE FROM ad_completions WHERE campaign_id IN (SELECT id FROM campaigns WHERE created_by IN (SELECT id FROM users WHERE email LIKE 'test-%@%' OR email LIKE '%test%@%' OR email LIKE 'campaign-test%@%' OR email LIKE 'creative-test%@%'))");
+            await global.testPool.query("DELETE FROM ad_clicks WHERE campaign_id IN (SELECT id FROM campaigns WHERE created_by IN (SELECT id FROM users WHERE email LIKE 'test-%@%' OR email LIKE '%test%@%' OR email LIKE 'campaign-test%@%' OR email LIKE 'creative-test%@%'))");
+            await global.testPool.query("DELETE FROM ad_impressions WHERE campaign_id IN (SELECT id FROM campaigns WHERE created_by IN (SELECT id FROM users WHERE email LIKE 'test-%@%' OR email LIKE '%test%@%' OR email LIKE 'campaign-test%@%' OR email LIKE 'creative-test%@%'))");
+            await global.testPool.query("DELETE FROM creatives WHERE uploaded_by IN (SELECT id FROM users WHERE email LIKE 'test-%@%' OR email LIKE '%test%@%' OR email LIKE 'campaign-test%@%' OR email LIKE 'creative-test%@%')");
+            await global.testPool.query("DELETE FROM campaigns WHERE created_by IN (SELECT id FROM users WHERE email LIKE 'test-%@%' OR email LIKE '%test%@%' OR email LIKE 'campaign-test%@%' OR email LIKE 'creative-test%@%')");
+            await global.testPool.query("DELETE FROM users WHERE email LIKE 'test-%@%' OR email LIKE '%test%@%' OR email LIKE 'campaign-test%@%' OR email LIKE 'creative-test%@%'");
+        } catch (error) {
+            console.warn('Final test cleanup skipped:', error.message);
+        }
+    }
+
     // Clean up database connections
     if (global.testPool) {
         await global.testPool.end();
@@ -86,22 +101,6 @@ beforeEach(async () => {
     }
 });
 
-afterEach(async () => {
-    // Clean up test data from database
-    if (global.testPool) {
-        try {
-            // Clean up in reverse dependency order
-            await global.testPool.query("DELETE FROM ad_completions WHERE campaign_id IN (SELECT id FROM campaigns WHERE created_by IN (SELECT id FROM users WHERE email LIKE 'test-%@%' OR email LIKE '%test%@%'))");
-            await global.testPool.query("DELETE FROM ad_clicks WHERE campaign_id IN (SELECT id FROM campaigns WHERE created_by IN (SELECT id FROM users WHERE email LIKE 'test-%@%' OR email LIKE '%test%@%'))");
-            await global.testPool.query("DELETE FROM ad_impressions WHERE campaign_id IN (SELECT id FROM campaigns WHERE created_by IN (SELECT id FROM users WHERE email LIKE 'test-%@%' OR email LIKE '%test%@%'))");
-            await global.testPool.query("DELETE FROM creatives WHERE uploaded_by IN (SELECT id FROM users WHERE email LIKE 'test-%@%' OR email LIKE '%test%@%')");
-            await global.testPool.query("DELETE FROM campaigns WHERE created_by IN (SELECT id FROM users WHERE email LIKE 'test-%@%' OR email LIKE '%test%@%')");
-            await global.testPool.query("DELETE FROM users WHERE email LIKE 'test-%@%' OR email LIKE '%test%@%'");
-        } catch (error) {
-            console.warn('Test cleanup skipped:', error.message);
-        }
-    }
-});
 
 async function setupTestDatabase() {
     try {
@@ -326,16 +325,17 @@ global.testUtils = {
             description: 'Test campaign description',
             budget_total: 1000.00,
             start_date: new Date('2025-01-01'),
-            end_date: new Date('2025-12-31')
+            end_date: new Date('2025-12-31'),
+            status: 'draft'
         };
 
         const campaign = { ...defaultData, ...campaignData };
 
         const result = await global.testPool.query(
-            `INSERT INTO campaigns (name, description, budget_total, start_date, end_date, created_by)
-             VALUES ($1, $2, $3, $4, $5, $6)
+            `INSERT INTO campaigns (name, description, budget_total, start_date, end_date, status, created_by)
+             VALUES ($1, $2, $3, $4, $5, $6, $7)
              RETURNING *`,
-            [campaign.name, campaign.description, campaign.budget_total, campaign.start_date, campaign.end_date, userId]
+            [campaign.name, campaign.description, campaign.budget_total, campaign.start_date, campaign.end_date, campaign.status, userId]
         );
 
         return result.rows[0];

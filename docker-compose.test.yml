@@ -34,6 +34,27 @@ services:
     networks:
       - test-network
 
+  localstack-test:
+    image: localstack/localstack:latest
+    ports:
+      - "4567:4566"
+    environment:
+      - SERVICES=s3
+      - DEBUG=0
+      - AWS_DEFAULT_REGION=us-east-1
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+    volumes:
+      - localstack_test_data:/var/lib/localstack
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4566/_localstack/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - test-network
+
   api-gateway-test:
     build:
       context: .
@@ -42,6 +63,8 @@ services:
       postgres-test:
         condition: service_healthy
       redis-test:
+        condition: service_healthy
+      localstack-test:
         condition: service_healthy
     environment:
       NODE_ENV: test
@@ -53,6 +76,12 @@ services:
       RATE_LIMIT_WINDOW_MS: 900000
       RATE_LIMIT_MAX_REQUESTS: 1000
       INSIDE_DOCKER_TEST: 'true'
+      S3_ENDPOINT: http://localstack-test:4566
+      AWS_ENDPOINT: http://localstack-test:4566
+      AWS_REGION: us-east-1
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+      S3_BUCKET_NAME: ctv-ad-server-creatives
     volumes:
       - ./services/api-gateway/coverage:/app/coverage
       - ./services/api-gateway/logs:/app/logs
@@ -63,6 +92,7 @@ services:
 volumes:
   postgres_test_data:
   redis_test_data:
+  localstack_test_data:
 
 networks:
   test-network:

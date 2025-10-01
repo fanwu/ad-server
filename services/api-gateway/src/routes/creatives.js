@@ -1,4 +1,5 @@
 const express = require('express');
+const multer = require('multer');
 const logger = require('../utils/logger');
 const creativeService = require('../services/creativeService');
 const s3Service = require('../services/s3Service');
@@ -9,13 +10,34 @@ const {
     validateListCreatives,
     validateUploadedFile
 } = require('../middleware/creativeValidation');
+const { validateCampaignIdParam, validateCreativeId } = require('../middleware/uuidValidation');
 
 const router = express.Router();
+
+// Middleware to handle multer errors and convert them to validation errors
+const handleMulterError = (err, req, res, next) => {
+    if (err instanceof multer.MulterError || err.message.includes('Invalid file type')) {
+        return res.status(400).json({
+            error: {
+                message: 'Validation failed',
+                details: [{
+                    field: 'video',
+                    message: err.message.includes('Invalid file type')
+                        ? 'Only video files (MP4, MOV, AVI) are allowed'
+                        : err.message
+                }]
+            }
+        });
+    }
+    next(err);
+};
 
 // Upload a creative for a campaign
 router.post(
     '/campaigns/:campaignId/creatives',
+    validateCampaignIdParam,
     upload.single('video'),
+    handleMulterError,
     validateUploadedFile,
     validateCreateCreative,
     async (req, res) => {
@@ -102,9 +124,20 @@ router.post(
 );
 
 // Get all creatives for a campaign
-router.get('/campaigns/:campaignId/creatives', validateListCreatives, async (req, res) => {
+router.get('/campaigns/:campaignId/creatives', validateCampaignIdParam, validateListCreatives, async (req, res) => {
     try {
         const { campaignId } = req.params;
+
+        // Check if user owns the campaign
+        const ownsCapmaign = await creativeService.userOwnsCampaign(campaignId, req.user.id);
+        if (!ownsCapmaign) {
+            return res.status(404).json({
+                error: {
+                    message: 'Campaign not found or you do not have permission',
+                    code: 'CAMPAIGN_NOT_FOUND'
+                }
+            });
+        }
 
         const creatives = await creativeService.getCreativesByCampaign(campaignId, req.user.id);
 
@@ -138,7 +171,7 @@ router.get('/campaigns/:campaignId/creatives', validateListCreatives, async (req
 });
 
 // Get a specific creative
-router.get('/creatives/:id', async (req, res) => {
+router.get('/creatives/:id', validateCreativeId, async (req, res) => {
     try {
         const creativeId = req.params.id;
 
@@ -178,7 +211,7 @@ router.get('/creatives/:id', async (req, res) => {
 });
 
 // Update a creative
-router.put('/creatives/:id', validateUpdateCreative, async (req, res) => {
+router.put('/creatives/:id', validateCreativeId, validateUpdateCreative, async (req, res) => {
     try {
         const creativeId = req.params.id;
 
@@ -222,7 +255,7 @@ router.put('/creatives/:id', validateUpdateCreative, async (req, res) => {
 });
 
 // Update creative status
-router.put('/creatives/:id/status', async (req, res) => {
+router.put('/creatives/:id/status', validateCreativeId, async (req, res) => {
     try {
         const creativeId = req.params.id;
         const { status } = req.body;
@@ -276,7 +309,7 @@ router.put('/creatives/:id/status', async (req, res) => {
 });
 
 // Delete a creative
-router.delete('/creatives/:id', async (req, res) => {
+router.delete('/creatives/:id', validateCreativeId, async (req, res) => {
     try {
         const creativeId = req.params.id;
 
@@ -344,7 +377,7 @@ router.delete('/creatives/:id', async (req, res) => {
 });
 
 // Get creative statistics
-router.get('/creatives/:id/stats', async (req, res) => {
+router.get('/creatives/:id/stats', validateCreativeId, async (req, res) => {
     try {
         const creativeId = req.params.id;
 
@@ -384,7 +417,7 @@ router.get('/creatives/:id/stats', async (req, res) => {
 });
 
 // Generate presigned URL for direct upload (alternative method)
-router.post('/campaigns/:campaignId/creatives/upload-url', async (req, res) => {
+router.post('/campaigns/:campaignId/creatives/upload-url', validateCampaignIdParam, async (req, res) => {
     try {
         const { campaignId } = req.params;
         const { fileName, contentType } = req.body;

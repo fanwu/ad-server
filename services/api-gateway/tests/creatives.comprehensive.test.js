@@ -30,7 +30,7 @@ describe('Creative Comprehensive Tests', () => {
         });
 
         secondUser = await global.testUtils.createTestUser({
-            email: `creative-test-2-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@example.com`,
+            email: `creative-test-2-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}@example.com`,
             name: 'Second Test User'
         });
 
@@ -54,6 +54,27 @@ describe('Creative Comprehensive Tests', () => {
         if (!fs.existsSync(testVideoPath)) {
             fs.writeFileSync(testVideoPath, Buffer.from('fake video content for testing'));
         }
+    });
+
+    afterEach(async () => {
+        // Clean up test data created in this specific test
+        if (testUser && secondUser) {
+            try {
+                // Delete creatives first, then campaigns, then users
+                await global.testPool.query('DELETE FROM creatives WHERE campaign_id IN (SELECT id FROM campaigns WHERE created_by IN ($1, $2))', [testUser.id, secondUser.id]);
+                await global.testPool.query('DELETE FROM campaigns WHERE created_by IN ($1, $2)', [testUser.id, secondUser.id]);
+                await global.testPool.query('DELETE FROM users WHERE id IN ($1, $2)', [testUser.id, secondUser.id]);
+            } catch (error) {
+                // Best effort cleanup
+                console.warn('Creative test cleanup error:', error.message);
+            }
+        }
+        testUser = null;
+        secondUser = null;
+        testCampaign = null;
+        otherUserCampaign = null;
+        authToken = null;
+        secondUserToken = null;
     });
 
     describe('POST /api/v1/campaigns/:campaignId/creatives - Creative Upload', () => {

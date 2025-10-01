@@ -236,4 +236,11 @@ describe('RedisService', () => {
         expect(redisService.isConnected).toBe(false);
         expect(logger.info).toHaveBeenCalledWith('Redis connection closed');
     });
+
+    test('disconnect handles missing client gracefully', async () => {
+        const redisService = loadService();
+
+        await expect(redisService.disconnect()).resolves.toBeUndefined();
+        expect(logger.info).not.toHaveBeenCalledWith('Redis connection closed');
+    });
 });

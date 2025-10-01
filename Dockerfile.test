@@ -1,7 +1,7 @@
 FROM node:20-alpine
 
-# Install PostgreSQL client for database setup
-RUN apk add --no-cache bash postgresql-client redis netcat-openbsd
+# Install PostgreSQL client, AWS CLI, and other utilities for database setup
+RUN apk add --no-cache bash postgresql-client redis netcat-openbsd aws-cli curl
 
 # Set working directory
 WORKDIR /app
@@ -20,7 +20,7 @@ COPY . .
 RUN mkdir -p logs coverage
 
 # Make test scripts executable
-RUN chmod +x scripts/test-all.sh scripts/test-docker.sh
+RUN chmod +x scripts/test-all.sh scripts/test-docker.sh scripts/init-s3-test.sh
 
 # Expose port (for potential health checks)
 EXPOSE 3000
@@ -29,8 +29,8 @@ EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
   CMD node -e "console.log('Health check passed')" || exit 1
 
-# Use bash as entrypoint for script execution
-ENTRYPOINT ["/bin/bash", "-c"]
+# Use the S3 init script as entrypoint
+ENTRYPOINT ["./scripts/init-s3-test.sh"]
 
 # Default command
-CMD ["./scripts/test-all.sh test"]
+CMD ["./scripts/test-all.sh", "test"]

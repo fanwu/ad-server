@@ -1,6 +1,6 @@
 /**
- * Integration Tests for Campaign Endpoints
- * Tests API contract with mock data + skipped tests for future real implementation
+ * Integration tests for campaign endpoints.
+ * Focuses on API contract behaviour using the real service implementation.
  */
 
 const request = require('supertest');
@@ -10,14 +10,31 @@ describe('Campaign Integration Tests', () => {
     let testUser;
     let authToken;
 
-    let userEmail;
+    const buildCampaignPayload = (overrides = {}) => ({
+        name: `Integration Campaign ${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        description: 'Integration test campaign',
+        budget_total: 5000,
+        start_date: '2025-01-01T00:00:00.000Z',
+        end_date: '2025-12-31T00:00:00.000Z',
+        ...overrides
+    });
+
+    const createCampaignViaApi = async (overrides = {}) => {
+        const payload = buildCampaignPayload(overrides);
+        const response = await request(app)
+            .post('/api/v1/campaigns')
+            .set('Authorization', `Bearer ${authToken}`)
+            .send(payload)
+            .expect(201);
+
+        return response.body.campaign;
+    };
 
     beforeEach(async () => {
-        userEmail = `campaign-test-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@example.com`;
         const userData = {
-            email: userEmail,
+            email: `campaign-int-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@example.com`,
             password: 'testpassword123',
-            name: 'Campaign Test User',
+            name: 'Campaign Integration User',
             role: 'advertiser'
         };
 
@@ -38,80 +55,65 @@ describe('Campaign Integration Tests', () => {
         }
     });
 
-    describe('GET /api/v1/campaigns - API Contract Tests', () => {
-        it('should return campaigns with correct structure', async () => {
+    describe('GET /api/v1/campaigns', () => {
+        it('returns campaigns with paging metadata and expected shape', async () => {
+            const created = await Promise.all([
+                createCampaignViaApi({ name: 'Campaign Alpha' }),
+                createCampaignViaApi({ name: 'Campaign Beta' })
+            ]);
+
             const response = await request(app)
                 .get('/api/v1/campaigns')
                 .set('Authorization', `Bearer ${authToken}`)
                 .expect(200);
 
-            // Test API contract - response structure
-            expect(response.body).toHaveProperty('campaigns');
-            expect(response.body).toHaveProperty('total');
-            expect(response.body).toHaveProperty('user');
+            expect(response.body).toEqual(expect.objectContaining({
+                campaigns: expect.any(Array),
+                total: created.length,
+                page: 1,
+                limit: 20
+            }));
 
-            const { campaigns, total, user } = response.body;
+            const campaign = response.body.campaigns[0];
+            expect(campaign).toEqual(expect.objectContaining({
+                id: expect.any(String),
+                name: expect.any(String),
+                status: expect.any(String),
+                budget_total: expect.any(String),
+                budget_spent: expect.any(String),
+                start_date: expect.any(String),
+                end_date: expect.any(String),
+                created_by: testUser.id,
+                created_at: expect.any(String),
+                updated_at: expect.any(String),
+                creative_count: expect.any(String),
+                total_impressions: expect.any(String)
+            }));
 
-            // Test data types and structure
-            expect(Array.isArray(campaigns)).toBe(true);
-            expect(typeof total).toBe('number');
-            expect(typeof user).toBe('object');
-            expect(total).toBe(campaigns.length);
-
-            // Test user context is properly attached
-            expect(user.id).toBe(testUser.id);
-            expect(user.email).toBe(testUser.email);
-
-            // Test each campaign has required contract fields
-            campaigns.forEach(campaign => {
-                expect(campaign).toHaveProperty('id');
-                expect(campaign).toHaveProperty('name');
-                expect(campaign).toHaveProperty('status');
-                expect(campaign).toHaveProperty('budget');
-                expect(campaign).toHaveProperty('spent');
-                expect(campaign).toHaveProperty('impressions');
-                expect(campaign).toHaveProperty('clicks');
-                expect(campaign).toHaveProperty('createdAt');
-
-                // Test data types
-                expect(typeof campaign.id).toBe('string');
-                expect(typeof campaign.name).toBe('string');
-                expect(typeof campaign.status).toBe('string');
-                expect(typeof campaign.budget).toBe('number');
-                expect(typeof campaign.spent).toBe('number');
-                expect(typeof campaign.impressions).toBe('number');
-                expect(typeof campaign.clicks).toBe('number');
-                expect(typeof campaign.createdAt).toBe('string');
-
-                // Test business rules
-                expect(campaign.budget).toBeGreaterThanOrEqual(0);
-                expect(campaign.spent).toBeGreaterThanOrEqual(0);
-                expect(campaign.impressions).toBeGreaterThanOrEqual(0);
-                expect(campaign.clicks).toBeGreaterThanOrEqual(0);
-                expect(['active', 'paused', 'completed', 'draft']).toContain(campaign.status);
-            });
+            expect(Number(campaign.budget_total)).toBeGreaterThan(0);
         });
 
-        it('should reject unauthorized requests', async () => {
+        it('rejects unauthorized requests', async () => {
             const response = await request(app)
                 .get('/api/v1/campaigns')
                 .expect(401);
 
-            expect(response.body.error.message).toBe('Authorization token required');
-            expect(response.body.error.code).toBe('MISSING_TOKEN');
+            expect(response.body.error).toEqual(expect.objectContaining({
+                message: 'Authorization token required',
+                code: 'MISSING_TOKEN'
+            }));
         });
 
-        it('should reject invalid tokens', async () => {
+        it('rejects invalid tokens', async () => {
             const response = await request(app)
                 .get('/api/v1/campaigns')
                 .set('Authorization', 'Bearer invalid-token')
                 .expect(401);
 
-            expect(response.body.error.message).toBe('Invalid or expired token');
             expect(response.body.error.code).toBe('INVALID_TOKEN');
         });
 
-        it('should include request tracking headers', async () => {
+        it('includes request tracking headers', async () => {
             const response = await request(app)
                 .get('/api/v1/campaigns')
                 .set('Authorization', `Bearer ${authToken}`)
@@ -122,249 +124,219 @@ describe('Campaign Integration Tests', () => {
         });
     });
 
-    describe('GET /api/v1/campaigns/:id - API Contract Tests', () => {
-        it('should return campaign details with correct structure', async () => {
-            const campaignId = 'test-campaign-id';
+    describe('GET /api/v1/campaigns/:id', () => {
+        it('returns campaign details with metrics for the owner', async () => {
+            const campaign = await createCampaignViaApi();
+
+            await global.testPool.query(
+                `INSERT INTO campaign_daily_stats (campaign_id, stat_date, impressions, clicks, completions, spend)
+                 VALUES ($1, CURRENT_DATE, $2, $3, $4, $5)`,
+                [campaign.id, 1000, 125, 800, 432.50]
+            );
 
             const response = await request(app)
-                .get(`/api/v1/campaigns/${campaignId}`)
+                .get(`/api/v1/campaigns/${campaign.id}`)
                 .set('Authorization', `Bearer ${authToken}`)
                 .expect(200);
 
-            // Test API contract - response structure
             expect(response.body).toHaveProperty('campaign');
-            const { campaign } = response.body;
+            const { campaign: payload } = response.body;
 
-            // Test campaign ID is returned as requested
-            expect(campaign.id).toBe(campaignId);
-
-            // Test detailed campaign structure
-            expect(campaign).toHaveProperty('name');
-            expect(campaign).toHaveProperty('description');
-            expect(campaign).toHaveProperty('status');
-            expect(campaign).toHaveProperty('budget');
-            expect(campaign).toHaveProperty('dailyBudget');
-            expect(campaign).toHaveProperty('spent');
-            expect(campaign).toHaveProperty('startDate');
-            expect(campaign).toHaveProperty('endDate');
-            expect(campaign).toHaveProperty('targeting');
-            expect(campaign).toHaveProperty('metrics');
-            expect(campaign).toHaveProperty('createdAt');
-            expect(campaign).toHaveProperty('updatedAt');
-
-            // Test data types
-            expect(typeof campaign.name).toBe('string');
-            expect(typeof campaign.description).toBe('string');
-            expect(typeof campaign.status).toBe('string');
-            expect(typeof campaign.budget).toBe('number');
-            expect(typeof campaign.dailyBudget).toBe('number');
-            expect(typeof campaign.spent).toBe('number');
-
-            // Test targeting structure
-            expect(campaign.targeting).toHaveProperty('countries');
-            expect(campaign.targeting).toHaveProperty('deviceTypes');
-            expect(campaign.targeting).toHaveProperty('contentCategories');
-            expect(Array.isArray(campaign.targeting.countries)).toBe(true);
-            expect(Array.isArray(campaign.targeting.deviceTypes)).toBe(true);
-            expect(Array.isArray(campaign.targeting.contentCategories)).toBe(true);
-
-            // Test metrics structure
-            expect(campaign.metrics).toHaveProperty('impressions');
-            expect(campaign.metrics).toHaveProperty('clicks');
-            expect(campaign.metrics).toHaveProperty('ctr');
-            expect(campaign.metrics).toHaveProperty('completionRate');
-            expect(typeof campaign.metrics.impressions).toBe('number');
-            expect(typeof campaign.metrics.clicks).toBe('number');
-            expect(typeof campaign.metrics.ctr).toBe('number');
-            expect(typeof campaign.metrics.completionRate).toBe('number');
+            expect(payload.id).toBe(campaign.id);
+            expect(payload.metrics).toEqual(expect.objectContaining({
+                impressions: 1000,
+                clicks: 125,
+                ctr: expect.any(String),
+                spend: expect.any(Number)
+            }));
         });
 
-        it('should reject unauthorized requests', async () => {
+        it('returns 404 for missing campaign', async () => {
             const response = await request(app)
-                .get('/api/v1/campaigns/test-id')
-                .expect(401);
+                .get('/api/v1/campaigns/550e8400-e29b-41d4-a716-446655440999')
+                .set('Authorization', `Bearer ${authToken}`)
+                .expect(404);
 
-            expect(response.body.error.code).toBe('MISSING_TOKEN');
+            expect(response.body.error.code).toBe('CAMPAIGN_NOT_FOUND');
+        });
+
+        it('enforces authentication', async () => {
+            await request(app)
+                .get('/api/v1/campaigns/some-id')
+                .expect(401);
         });
     });
 
-    describe('POST /api/v1/campaigns - Not Implemented', () => {
-        it('should return 501 for unimplemented endpoint', async () => {
-            const campaignData = {
-                name: 'New Campaign',
-                budget: 5000,
-                status: 'draft'
-            };
+    describe('POST /api/v1/campaigns', () => {
+        it('creates a campaign when payload is valid', async () => {
+            const payload = buildCampaignPayload();
+
             const response = await request(app)
                 .post('/api/v1/campaigns')
                 .set('Authorization', `Bearer ${authToken}`)
-                .send(campaignData)
-                .expect(501);
+                .send(payload)
+                .expect(201);
 
-            expect(response.body.error.message).toBe('Campaign creation not yet implemented');
-            expect(response.body.error.code).toBe('NOT_IMPLEMENTED');
+            expect(response.body.message).toBe('Campaign created successfully');
+            expect(response.body.campaign).toEqual(expect.objectContaining({
+                id: expect.any(String),
+                name: payload.name,
+                status: 'draft',
+                created_by: testUser.id
+            }));
         });
 
-        it('should still require authentication', async () => {
+        it('validates required fields', async () => {
             const response = await request(app)
                 .post('/api/v1/campaigns')
-                .send({ name: 'Test' })
+                .set('Authorization', `Bearer ${authToken}`)
+                .send({})
+                .expect(400);
+
+            expect(response.body.error).toEqual(expect.objectContaining({
+                message: 'Validation failed'
+            }));
+        });
+
+        it('requires authentication', async () => {
+            await request(app)
+                .post('/api/v1/campaigns')
+                .send(buildCampaignPayload())
                 .expect(401);
-
-            expect(response.body.error.code).toBe('MISSING_TOKEN');
         });
     });
 
-    describe('PUT /api/v1/campaigns/:id - Not Implemented', () => {
-        it('should return 501 for unimplemented endpoint', async () => {
+    describe('PUT /api/v1/campaigns/:id', () => {
+        it('updates campaign fields for the owner', async () => {
+            const campaign = await createCampaignViaApi({ name: 'Original Name' });
+
             const response = await request(app)
-                .put('/api/v1/campaigns/test-id')
+                .put(`/api/v1/campaigns/${campaign.id}`)
                 .set('Authorization', `Bearer ${authToken}`)
-                .send({ name: 'Updated' })
-                .expect(501);
+                .send({ name: 'Updated Name' })
+                .expect(200);
 
-            expect(response.body.error.message).toBe('Campaign update not yet implemented');
-            expect(response.body.error.code).toBe('NOT_IMPLEMENTED');
+            expect(response.body).toEqual(expect.objectContaining({
+                message: 'Campaign updated successfully'
+            }));
+            expect(response.body.campaign.name).toBe('Updated Name');
         });
-    });
 
-    describe('DELETE /api/v1/campaigns/:id - Not Implemented', () => {
-        it('should return 501 for unimplemented endpoint', async () => {
+        it('returns 404 when campaign does not exist for user', async () => {
+            const otherUser = await request(app)
+                .post('/api/v1/auth/register')
+                .send({
+                    email: `campaign-other-${Date.now()}@example.com`,
+                    password: 'testpassword123',
+                    name: 'Other User'
+                })
+                .expect(201);
+
+            const foreignCampaign = await request(app)
+                .post('/api/v1/campaigns')
+                .set('Authorization', `Bearer ${otherUser.body.tokens.accessToken}`)
+                .send(buildCampaignPayload())
+                .expect(201);
+
             const response = await request(app)
-                .delete('/api/v1/campaigns/test-id')
+                .put(`/api/v1/campaigns/${foreignCampaign.body.campaign.id}`)
                 .set('Authorization', `Bearer ${authToken}`)
-                .expect(501);
+                .send({ name: 'Attempted Update' })
+                .expect(404);
 
-            expect(response.body.error.message).toBe('Campaign deletion not yet implemented');
-            expect(response.body.error.code).toBe('NOT_IMPLEMENTED');
+            expect(response.body.error.code).toBe('CAMPAIGN_NOT_FOUND');
+
+            await global.testPool.query('DELETE FROM users WHERE id = $1', [otherUser.body.user.id]);
         });
     });
 
-    // ========================================
-    // SKIPPED TESTS FOR FUTURE REAL IMPLEMENTATION
-    // ========================================
+    describe('PUT /api/v1/campaigns/:id/status', () => {
+        it('updates campaign status with valid value', async () => {
+            const campaign = await createCampaignViaApi();
 
-    describe.skip('GET /api/v1/campaigns - Real Data Behavior Tests', () => {
-        it('should return only campaigns owned by authenticated user', async () => {
-            // TODO: Test user isolation when real database is implemented
-            // Create campaigns for different users
-            // Verify each user only sees their own campaigns
+            const response = await request(app)
+                .put(`/api/v1/campaigns/${campaign.id}/status`)
+                .set('Authorization', `Bearer ${authToken}`)
+                .send({ status: 'active' })
+                .expect(200);
+
+            expect(response.body.message).toBe('Campaign status updated to active');
+            expect(response.body.campaign.status).toBe('active');
         });
 
-        it('should support pagination', async () => {
-            // TODO: Test ?page=1&limit=10 when pagination is implemented
-        });
+        it('validates status value', async () => {
+            const campaign = await createCampaignViaApi();
 
-        it('should support filtering by status', async () => {
-            // TODO: Test ?status=active when filtering is implemented
-        });
+            const response = await request(app)
+                .put(`/api/v1/campaigns/${campaign.id}/status`)
+                .set('Authorization', `Bearer ${authToken}`)
+                .send({ status: 'archived' })
+                .expect(400);
 
-        it('should support sorting', async () => {
-            // TODO: Test ?sort=created_at:desc when sorting is implemented
-        });
-
-        it('should return empty array when user has no campaigns', async () => {
-            // TODO: Test with new user who has no campaigns
-        });
-
-        it('should calculate metrics correctly', async () => {
-            // TODO: Test CTR calculation, spend tracking, etc.
+            expect(response.body.error.details[0].message).toContain('Status must be one of');
         });
     });
 
-    describe.skip('GET /api/v1/campaigns/:id - Real Data Behavior Tests', () => {
-        it('should return 404 for non-existent campaign', async () => {
-            // TODO: Test with invalid UUID when real DB is implemented
+    describe('DELETE /api/v1/campaigns/:id', () => {
+        it('performs a soft delete by default', async () => {
+            const campaign = await createCampaignViaApi();
+
+            const response = await request(app)
+                .delete(`/api/v1/campaigns/${campaign.id}`)
+                .set('Authorization', `Bearer ${authToken}`)
+                .expect(200);
+
+            expect(response.body.message).toBe('Campaign marked as completed');
+            expect(response.body.campaignId).toBe(campaign.id);
         });
 
-        it('should return 403 for campaigns owned by other users', async () => {
-            // TODO: Test user isolation
-        });
+        it('supports hard delete when requested', async () => {
+            const campaign = await createCampaignViaApi();
 
-        it('should return real-time metrics', async () => {
-            // TODO: Test with actual campaign data
-        });
-    });
+            const response = await request(app)
+                .delete(`/api/v1/campaigns/${campaign.id}?hard=true`)
+                .set('Authorization', `Bearer ${authToken}`)
+                .expect(200);
 
-    describe.skip('POST /api/v1/campaigns - Real Implementation Tests', () => {
-        it('should create campaign with valid data', async () => {
-            // TODO: Test campaign creation when implemented
-            const campaignData = {
-                name: 'Test Campaign',
-                description: 'Test Description',
-                budget: 10000,
-                dailyBudget: 500,
-                startDate: '2024-01-01T00:00:00Z',
-                endDate: '2024-03-01T00:00:00Z',
-                targeting: {
-                    countries: ['US', 'CA'],
-                    deviceTypes: ['smart_tv'],
-                    contentCategories: ['entertainment']
-                }
-            };
-
-            // Should return 201 with created campaign
-            // Should generate UUID for campaign
-            // Should set owner to authenticated user
-            // Should validate all required fields
-        });
-
-        it('should validate required fields', async () => {
-            // TODO: Test validation errors for missing/invalid data
-        });
-
-        it('should enforce budget constraints', async () => {
-            // TODO: Test budget validation rules
-        });
-
-        it('should validate targeting parameters', async () => {
-            // TODO: Test targeting validation
+            expect(response.body.message).toBe('Campaign permanently deleted');
+            expect(response.body.campaignId).toBe(campaign.id);
         });
     });
 
-    describe.skip('PUT /api/v1/campaigns/:id - Real Implementation Tests', () => {
-        it('should update campaign fields', async () => {
-            // TODO: Test partial updates when implemented
+    describe('GET /api/v1/campaigns/:id/stats', () => {
+        it('returns aggregated statistics for campaign', async () => {
+            const campaign = await createCampaignViaApi();
+
+            await global.testPool.query(
+                `INSERT INTO campaign_daily_stats (campaign_id, stat_date, impressions, clicks, completions, spend)
+                 VALUES ($1, CURRENT_DATE, 2000, 250, 1500, 900.75)`,
+                [campaign.id]
+            );
+
+            const response = await request(app)
+                .get(`/api/v1/campaigns/${campaign.id}/stats`)
+                .set('Authorization', `Bearer ${authToken}`)
+                .expect(200);
+
+            expect(response.body.stats).toEqual(expect.objectContaining({
+                id: campaign.id,
+                name: campaign.name,
+                total_impressions: '2000',
+                total_clicks: '250',
+                total_completions: '1500',
+                total_spend: '900.75',
+                ctr: expect.any(String),
+                completion_rate: expect.any(String)
+            }));
         });
 
-        it('should prevent updating running campaigns', async () => {
-            // TODO: Test business rules for active campaigns
-        });
+        it('returns 404 when campaign stats not available', async () => {
+            const response = await request(app)
+                .get('/api/v1/campaigns/550e8400-e29b-41d4-a716-446655440998/stats')
+                .set('Authorization', `Bearer ${authToken}`)
+                .expect(404);
 
-        it('should validate ownership', async () => {
-            // TODO: Test user can only update their own campaigns
-        });
-    });
-
-    describe.skip('DELETE /api/v1/campaigns/:id - Real Implementation Tests', () => {
-        it('should soft delete campaigns', async () => {
-            // TODO: Test soft deletion when implemented
-        });
-
-        it('should prevent deleting running campaigns', async () => {
-            // TODO: Test business rules
-        });
-
-        it('should validate ownership', async () => {
-            // TODO: Test user can only delete their own campaigns
-        });
-    });
-
-    describe.skip('Campaign Analytics - Future Tests', () => {
-        it('should track impression delivery', async () => {
-            // TODO: Test metrics tracking when analytics is implemented
-        });
-
-        it('should calculate cost per click', async () => {
-            // TODO: Test CPC calculation
-        });
-
-        it('should respect frequency capping', async () => {
-            // TODO: Test frequency limits
-        });
-
-        it('should handle budget depletion', async () => {
-            // TODO: Test campaign auto-pause when budget exhausted
+            expect(response.body.error.code).toBe('CAMPAIGN_NOT_FOUND');
         });
     });
 });

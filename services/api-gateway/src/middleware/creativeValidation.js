@@ -199,8 +199,11 @@ const validateUploadedFile = (req, res, next) => {
     if (!req.file) {
         return res.status(400).json({
             error: {
-                message: 'No file uploaded',
-                code: 'FILE_REQUIRED'
+                message: 'Validation failed',
+                details: [{
+                    field: 'video',
+                    message: 'Video file is required'
+                }]
             }
         });
     }

@@ -7,6 +7,7 @@ const {
     validateUpdateStatus,
     validateListCampaigns
 } = require('../middleware/campaignValidation');
+const { validateCampaignId } = require('../middleware/uuidValidation');
 
 const router = express.Router();
 
@@ -44,7 +45,7 @@ router.get('/', validateListCampaigns, async (req, res) => {
 });
 
 // Get specific campaign by ID
-router.get('/:id', async (req, res) => {
+router.get('/:id', validateCampaignId, async (req, res) => {
     try {
         const campaignId = req.params.id;
         const campaign = await campaignService.getCampaignById(campaignId, req.user.id);
@@ -130,7 +131,7 @@ router.post('/', validateCreateCampaign, async (req, res) => {
 });
 
 // Update campaign
-router.put('/:id', validateUpdateCampaign, async (req, res) => {
+router.put('/:id', validateCampaignId, validateUpdateCampaign, async (req, res) => {
     try {
         const campaignId = req.params.id;
         const campaign = await campaignService.updateCampaign(campaignId, req.body, req.user.id);
@@ -173,7 +174,7 @@ router.put('/:id', validateUpdateCampaign, async (req, res) => {
 });
 
 // Update campaign status
-router.put('/:id/status', validateUpdateStatus, async (req, res) => {
+router.put('/:id/status', validateCampaignId, validateUpdateStatus, async (req, res) => {
     try {
         const campaignId = req.params.id;
         const { status } = req.body;
@@ -218,7 +219,7 @@ router.put('/:id/status', validateUpdateStatus, async (req, res) => {
 });
 
 // Delete campaign
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', validateCampaignId, async (req, res) => {
     try {
         const campaignId = req.params.id;
         const hardDelete = req.query.hard === 'true';
@@ -263,7 +264,7 @@ router.delete('/:id', async (req, res) => {
 });
 
 // Get campaign statistics
-router.get('/:id/stats', async (req, res) => {
+router.get('/:id/stats', validateCampaignId, async (req, res) => {
     try {
         const campaignId = req.params.id;
         const stats = await campaignService.getCampaignStats(campaignId, req.user.id);

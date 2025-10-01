@@ -234,6 +234,7 @@ describe('Rate Limiting Tests', () => {
     describe('Campaign API Rate Limiting', () => {
         let testUser;
         let authToken;
+        let testCampaign;
 
         beforeEach(async () => {
             const userData = {
@@ -249,12 +250,15 @@ describe('Rate Limiting Tests', () => {
 
             testUser = response.body.user;
             authToken = response.body.tokens.accessToken;
+
+            testCampaign = await global.testUtils.createTestCampaign(testUser.id);
         });
 
         afterEach(async () => {
             if (testUser) {
                 await global.testPool.query('DELETE FROM users WHERE id = $1', [testUser.id]);
             }
+            testCampaign = null;
         });
 
         it('should rate limit authenticated campaign requests', async () => {
@@ -272,7 +276,7 @@ describe('Rate Limiting Tests', () => {
         });
 
         it('should rate limit campaign detail requests', async () => {
-            const responses = await makeMultipleRequests('/api/v1/campaigns/test-id', 3, {
+            const responses = await makeMultipleRequests(`/api/v1/campaigns/${testCampaign.id}`, 3, {
                 headers: {
                     'Authorization': `Bearer ${authToken}`
                 }
@@ -285,24 +289,23 @@ describe('Rate Limiting Tests', () => {
         });
 
         it('should rate limit campaign creation attempts', async () => {
-            const campaignData = {
-                name: 'Test Campaign',
-                budget: 5000,
-                status: 'draft'
-            };
-
             const responses = await makeMultipleRequests('/api/v1/campaigns', 3, {
                 method: 'POST',
                 headers: {
                     'Authorization': `Bearer ${authToken}`
                 },
-                body: campaignData
+                body: {
+                    name: `Rate Limit Campaign ${Date.now()}`,
+                    description: 'Rate limit creation test',
+                    budget_total: 1000,
+                    start_date: '2025-01-01T00:00:00.000Z',
+                    end_date: '2025-12-31T00:00:00.000Z'
+                }
             });
 
             responses.forEach(response => {
-                expect(response.status).toBe(501); // Not implemented
+                expect(response.status).toBe(201);
                 expect(response.headers).toHaveProperty('ratelimit-limit');
-                expect(response.body.error.code).toBe('NOT_IMPLEMENTED');
             });
         });
     });
