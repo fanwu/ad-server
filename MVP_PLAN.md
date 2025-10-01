@@ -38,7 +38,14 @@
 - Simple dashboard data
 - **Skip**: Advanced analytics, ML, detailed reporting
 
-#### 5. **AWS Deployment** ⭐
+#### 5. **Simple Admin UI** ⭐ **NEW**
+- Basic web interface for campaign management
+- Creative upload form with drag-and-drop
+- Campaign list and details view
+- Simple analytics dashboard
+- **Skip**: Advanced visualizations, user management, complex workflows
+
+#### 6. **AWS Deployment** ⭐
 - Complete AWS infrastructure setup
 - Automated deployment scripts
 - Production-ready environment
@@ -67,6 +74,7 @@ Following the original plan but with simplified configuration:
 | **API Gateway** | **Node.js/Express** | Kong | Faster development, existing codebase |
 | **Ad Decision Engine** | **Go** | Rust | High performance, low latency (same as full plan) |
 | **Campaign Management** | **Node.js/TypeScript** | Python | Rapid development, consistent with gateway |
+| **Admin UI** | **React/Next.js** | Vue.js | Rich ecosystem, SSR support, rapid prototyping |
 
 ### Data Layer
 | Component | Technology | MVP Justification |
@@ -184,6 +192,324 @@ POST   /api/v1/auth/login                  // Login
 POST   /api/v1/auth/logout                 // Logout
 GET    /api/v1/auth/profile                // Profile
 ```
+
+---
+
+## 🎨 Admin UI Specification (NEW)
+
+### UI Technology Stack
+- **Framework**: Next.js 14 (App Router)
+- **Language**: TypeScript (strict mode)
+- **Styling**: Tailwind CSS
+- **UI Components**: shadcn/ui (Radix UI primitives)
+- **State Management**: React Context + SWR for data fetching
+- **Forms**: React Hook Form + Zod validation
+- **File Upload**: react-dropzone
+- **Charts**: Recharts (simple, lightweight)
+- **Authentication**: JWT stored in httpOnly cookies
+- **Type Safety**: Full TypeScript coverage with strict type checking
+
+### Page Structure
+
+```
+admin-ui/
+├── app/
+│   ├── (auth)/
+│   │   ├── login/page.tsx
+│   │   └── register/page.tsx
+│   ├── (dashboard)/
+│   │   ├── layout.tsx              # Authenticated layout
+│   │   ├── page.tsx                # Dashboard home
+│   │   ├── campaigns/
+│   │   │   ├── page.tsx           # Campaign list
+│   │   │   ├── new/page.tsx       # Create campaign
+│   │   │   └── [id]/
+│   │   │       ├── page.tsx       # Campaign details
+│   │   │       └── creatives/page.tsx  # Creative management
+│   │   └── analytics/
+│   │       └── page.tsx           # Analytics dashboard
+│   ├── api/                       # API routes (proxy to backend)
+│   └── layout.tsx                 # Root layout
+├── components/
+│   ├── ui/                        # shadcn/ui components (TypeScript)
+│   ├── campaigns/                 # Campaign-specific components
+│   ├── creatives/                 # Creative-specific components
+│   └── charts/                    # Chart components
+├── lib/
+│   ├── api.ts                     # API client with full typing
+│   ├── auth.ts                    # Auth utilities
+│   └── types.ts                   # Shared TypeScript types
+├── types/
+│   ├── campaign.ts                # Campaign type definitions
+│   ├── creative.ts                # Creative type definitions
+│   └── analytics.ts               # Analytics type definitions
+└── tsconfig.json                  # TypeScript configuration (strict mode)
+```
+
+### Key Pages & Features
+
+#### 1. Login Page (`/login`)
+- Simple email/password form
+- JWT token stored in httpOnly cookie
+- Redirect to dashboard on success
+- Error handling with toast notifications
+
+#### 2. Dashboard Home (`/`)
+- Key metrics cards (total campaigns, active campaigns, total impressions)
+- Recent campaigns table
+- Quick actions (Create Campaign, Upload Creative)
+- Simple line chart showing impressions over last 7 days
+
+#### 3. Campaign List (`/campaigns`)
+- Searchable/filterable table
+- Columns: Name, Status, Budget, Start/End Date, Impressions, Actions
+- Status badges (draft/active/paused/completed)
+- Quick actions: Edit, Pause/Resume, View Creatives
+- Create Campaign button
+
+#### 4. Create/Edit Campaign (`/campaigns/new`, `/campaigns/[id]`)
+- Form fields:
+  - Campaign Name
+  - Description
+  - Budget Total
+  - Start Date / End Date (date pickers)
+  - Status (dropdown)
+- Client-side validation with error messages
+- Save and Cancel buttons
+- Redirect to campaign list on success
+
+#### 5. Campaign Details (`/campaigns/[id]`)
+- Campaign information display
+- Status management (activate, pause, complete)
+- Budget spent progress bar
+- Associated creatives list
+- Add Creative button
+- Basic performance metrics
+
+#### 6. Creative Management (`/campaigns/[id]/creatives`)
+- Drag-and-drop file upload zone
+- File validation (MP4 only, max 100MB, max 120s)
+- Upload progress indicator
+- Creative list with thumbnails (video preview)
+- Creative details: name, duration, file size, status
+- Delete creative action
+
+#### 7. Analytics Dashboard (`/analytics`)
+- Campaign performance table
+- Metrics: Impressions, CPM, Budget Spent, Budget Remaining
+- Date range selector
+- Simple charts:
+  - Impressions over time (line chart)
+  - Campaign comparison (bar chart)
+- Export to CSV button
+
+### UI/UX Guidelines
+
+**Design Principles:**
+- Clean, minimal interface
+- Focus on usability over aesthetics
+- Fast page loads (<2s)
+- Mobile-responsive (works on tablet)
+
+**Color Scheme:**
+- Primary: Blue (#3b82f6)
+- Success: Green (#10b981)
+- Warning: Yellow (#f59e0b)
+- Error: Red (#ef4444)
+- Neutral: Gray scale
+
+**Components to Use (shadcn/ui):**
+- Button, Input, Label, Select
+- Table, Card, Badge
+- Dialog (for confirmations)
+- Toast (for notifications)
+- Form components
+- Progress bar
+- Date picker
+
+### API Integration
+
+**Type Definitions (`types/campaign.ts`):**
+```typescript
+export type CampaignStatus = 'draft' | 'active' | 'paused' | 'completed';
+
+export interface Campaign {
+  id: string;
+  name: string;
+  description: string | null;
+  status: CampaignStatus;
+  budget_total: number;
+  budget_spent: number;
+  start_date: string;
+  end_date: string;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateCampaignDto {
+  name: string;
+  description?: string;
+  budget_total: number;
+  start_date: string;
+  end_date: string;
+}
+
+export interface UpdateCampaignStatusDto {
+  status: CampaignStatus;
+}
+```
+
+**Type Definitions (`types/creative.ts`):**
+```typescript
+export type CreativeStatus = 'active' | 'inactive' | 'processing' | 'failed';
+
+export interface Creative {
+  id: string;
+  campaign_id: string;
+  name: string;
+  video_url: string;
+  duration: number;
+  file_size: number | null;
+  width: number | null;
+  height: number | null;
+  format: string;
+  status: CreativeStatus;
+  uploaded_by: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface UploadCreativeDto {
+  name: string;
+  video: File;
+}
+```
+
+**API Client (`lib/api.ts`):**
+```typescript
+import type { Campaign, CreateCampaignDto, UpdateCampaignStatusDto } from '@/types/campaign';
+import type { Creative, UploadCreativeDto } from '@/types/creative';
+
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
+
+interface ApiResponse<T> {
+  data?: T;
+  error?: string;
+}
+
+// Campaigns
+export const getCampaigns = async (): Promise<ApiResponse<Campaign[]>> => {
+  const response = await fetch(`${API_BASE_URL}/api/v1/campaigns`, {
+    credentials: 'include',
+  });
+  if (!response.ok) throw new Error('Failed to fetch campaigns');
+  const data = await response.json();
+  return { data: data.campaigns };
+};
+
+export const getCampaign = async (id: string): Promise<ApiResponse<Campaign>> => {
+  const response = await fetch(`${API_BASE_URL}/api/v1/campaigns/${id}`, {
+    credentials: 'include',
+  });
+  if (!response.ok) throw new Error('Failed to fetch campaign');
+  const data = await response.json();
+  return { data: data.campaign };
+};
+
+export const createCampaign = async (data: CreateCampaignDto): Promise<ApiResponse<Campaign>> => {
+  const response = await fetch(`${API_BASE_URL}/api/v1/campaigns`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify(data),
+  });
+  if (!response.ok) throw new Error('Failed to create campaign');
+  const result = await response.json();
+  return { data: result.campaign };
+};
+
+export const updateCampaignStatus = async (
+  id: string,
+  status: UpdateCampaignStatusDto
+): Promise<ApiResponse<Campaign>> => {
+  const response = await fetch(`${API_BASE_URL}/api/v1/campaigns/${id}/status`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify(status),
+  });
+  if (!response.ok) throw new Error('Failed to update campaign status');
+  const result = await response.json();
+  return { data: result.campaign };
+};
+
+// Creatives
+export const uploadCreative = async (
+  campaignId: string,
+  data: UploadCreativeDto
+): Promise<ApiResponse<Creative>> => {
+  const formData = new FormData();
+  formData.append('name', data.name);
+  formData.append('video', data.video);
+
+  const response = await fetch(`${API_BASE_URL}/api/v1/campaigns/${campaignId}/creatives`, {
+    method: 'POST',
+    credentials: 'include',
+    body: formData,
+  });
+  if (!response.ok) throw new Error('Failed to upload creative');
+  const result = await response.json();
+  return { data: result.creative };
+};
+```
+
+**TypeScript Configuration (`tsconfig.json`):**
+```json
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "lib": ["dom", "dom.iterable", "esnext"],
+    "allowJs": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "jsx": "preserve",
+    "incremental": true,
+    "plugins": [{ "name": "next" }],
+    "paths": {
+      "@/*": ["./*"]
+    },
+    "strictNullChecks": true,
+    "strictFunctionTypes": true,
+    "strictBindCallApply": true,
+    "strictPropertyInitialization": true,
+    "noImplicitAny": true,
+    "noImplicitThis": true,
+    "alwaysStrict": true
+  },
+  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
+  "exclude": ["node_modules"]
+}
+```
+
+### Authentication Flow
+1. User logs in via `/login`
+2. JWT token stored in httpOnly cookie (handled by Next.js API route)
+3. All API requests include token automatically
+4. Middleware checks auth on protected routes
+5. Redirect to login if token expired
+
+### Deployment
+- Built as static + API routes (hybrid)
+- Deployed to AWS S3 + CloudFront
+- Environment variables for API URL
+- CI/CD via GitHub Actions
 
 **Simplified Request/Response Examples**:
 
@@ -362,69 +688,111 @@ echo "🌐 URL: $(kubectl get ingress mvp-ingress -o jsonpath='{.status.loadBala
 
 ## ⚡ MVP Development Timeline
 
-### Week 1: Database & Basic API (Oct 1-7)
-**Days 1-2: Database Schema**
-- Create simplified migration files
-- Remove complex tables and relationships
-- Test basic CRUD operations
+### Week 1: Database & Basic API (Oct 1-7) ✅ COMPLETED
+**Days 1-2: Database Schema** ✅
+- Created simplified migration files
+- Implemented campaigns and creatives tables
+- Tested basic CRUD operations
 
-**Days 3-5: Campaign Management**
-- Implement simplified campaign endpoints
-- Basic validation and error handling
-- Unit tests for campaign operations
+**Days 3-5: Campaign Management** ✅
+- Implemented simplified campaign endpoints
+- Added validation and error handling
+- Created unit tests for campaign operations
 
-**Days 6-7: Creative Management**
-- File upload for MP4 videos
-- Basic file validation
-- Link creatives to campaigns
+**Days 6-7: Creative Management** ✅
+- Implemented file upload for MP4 videos
+- Added basic file validation with S3 integration
+- Linked creatives to campaigns
 
-### Week 2: Ad Serving & Testing (Oct 8-14)
-**Days 1-3: Ad Serving Logic & Decision Engine**
-- Implement Go-based ad decision engine (minimal version)
-- Simple ad request/response endpoints
-- Basic impression tracking
-- No targeting - just return available ads based on campaign status
+### Week 2: Admin UI Foundation (Oct 8-14) 🎨 **PRIORITY CHANGE**
+**Goal:** Get something visual working quickly to see existing backend functionality
 
-**Days 4-5: Testing Implementation**
-- Comprehensive test suite for MVP features
-- Integration tests for full flow
-- Performance testing setup
+**Days 1-2: Project Setup & Authentication**
+- Setup Next.js 14 project with TypeScript (strict mode)
+- Install and configure Tailwind CSS + shadcn/ui
+- Create TypeScript type definitions (Campaign, Creative)
+- Build API client with full typing (`lib/api.ts`)
+- Implement login page with form validation
+- Set up JWT cookie-based authentication
+- Create basic layout with navigation
 
-**Days 6-7: Basic Analytics**
-- Campaign impression counts
-- Simple dashboard endpoint
-- Basic performance metrics
+**Days 3-4: Campaign List & Dashboard**
+- Build dashboard home page (simple welcome + metrics cards placeholders)
+- Create campaign list page
+  - Fetch campaigns from existing API
+  - Display in table with columns: Name, Status, Budget, Dates
+  - Add status badges (draft/active/paused/completed)
+  - Add search/filter functionality
+  - Loading and error states
+- Test with existing backend data
 
-### Week 3: AWS Infrastructure (Oct 15-21)
+**Days 5-7: Campaign Details & Polish**
+- Build campaign details page
+  - Display all campaign information
+  - Show associated creatives list
+  - Budget progress bar
+- Add navigation between pages
+- Responsive design (mobile/tablet)
+- Basic error handling and notifications (toast)
+- Polish styling and UX
+
+**Deliverable:** A functional UI where you can login, see campaigns, view details - **something visual to demo!**
+
+### Week 3: Complete UI Features + Ad Serving Backend (Oct 15-21)
+**Days 1-3: Campaign & Creative Management UI**
+- Campaign creation form
+  - Form with validation (React Hook Form + Zod)
+  - Date picker for start/end dates
+  - Budget input with validation
+  - Status dropdown
+  - Error handling and success feedback
+- Campaign edit and status update functionality
+- Creative upload interface
+  - Drag-and-drop zone (react-dropzone)
+  - File validation (MP4, size, duration)
+  - Upload progress indicator
+  - Preview uploaded creatives
+  - Creative list per campaign
+
+**Days 4-5: Ad Serving Backend**
+- Implement basic ad request endpoint (`POST /api/v1/ad-request`)
+  - Filter active campaigns (status = 'active')
+  - Check campaign dates (current date within start/end)
+  - Select random creative from eligible campaigns
+  - Return creative URL and metadata
+- Implement impression tracking endpoint (`POST /api/v1/impression`)
+  - Store impression record in database
+  - Update campaign impression count
+  - Link to ad request
+- Add basic tests for ad serving logic
+
+**Days 6-7: Analytics Backend + Dashboard UI**
+- Analytics backend endpoints
+  - `GET /api/v1/campaigns/:id/stats` - Campaign metrics
+  - `GET /api/v1/analytics/dashboard` - Overall metrics
+  - Calculate: total impressions, active campaigns, budget spent
+- Analytics dashboard UI
+  - Key metrics cards (total campaigns, impressions, budget)
+  - Campaign performance table
+  - Simple line chart (impressions over time) with Recharts
+  - Date range selector
+
+**Deliverable:** Complete UI for managing campaigns/creatives + functional ad serving + basic analytics
+
+### Week 4: AWS Infrastructure & Launch (Oct 22-28)
 **Days 1-3: Infrastructure Setup**
-- Terraform configuration for MVP
-- Simplified AWS architecture
+- Terraform configuration for MVP (API + UI)
+- Deploy to AWS with CloudFront for UI
 - Basic monitoring and logging
 
-**Days 4-5: Deployment Automation**
-- CI/CD pipeline for MVP
-- Automated deployment scripts
-- Environment configuration
-
-**Days 6-7: Testing & Validation**
-- End-to-end testing in AWS
-- Performance validation
-- Security testing
-
-### Week 4: Polish & Demo Prep (Oct 22-28)
-**Days 1-3: Bug Fixes & Optimization**
-- Address any issues found in testing
-- Performance optimization
-- Error handling improvements
-
-**Days 4-5: Documentation**
-- MVP API documentation
-- Deployment guide
-- Demo preparation
+**Days 4-5: Testing & Polish**
+- End-to-end testing (UI + API)
+- Bug fixes and optimization
+- Documentation updates
 
 **Days 6-7: Final Testing & Launch**
-- Final integration testing
 - Load testing validation
+- Security review
 - MVP launch preparation
 
 ---
@@ -432,25 +800,27 @@ echo "🌐 URL: $(kubectl get ingress mvp-ingress -o jsonpath='{.status.loadBala
 ## ✅ MVP Success Criteria
 
 ### Technical Requirements
-- **Response Time**: Ad requests <100ms
+- **Response Time**: Ad requests <100ms, UI pages <2s
 - **Uptime**: 99%+ availability
 - **Throughput**: 500+ ad requests per minute
 - **Test Coverage**: >90% for MVP features
 
 ### Functional Requirements
-- ✅ Create and manage campaigns
-- ✅ Upload and manage video creatives
+- ✅ Create and manage campaigns via UI
+- ✅ Upload and manage video creatives via UI
 - ✅ Serve ads via API
 - ✅ Track basic impressions
-- ✅ View campaign performance
-- ✅ Deploy and run in AWS
+- ✅ View campaign performance in dashboard
+- ✅ User authentication and session management
+- ✅ Deploy and run in AWS (API + UI)
 
 ### Demo Capabilities
-1. **Campaign Creation**: Create a campaign in <2 minutes
-2. **Creative Upload**: Upload video creative successfully
-3. **Ad Serving**: Request and receive ads via API
-4. **Analytics**: View campaign performance metrics
-5. **Scale**: Handle multiple concurrent requests
+1. **User Login**: Login to admin dashboard
+2. **Campaign Creation**: Create a campaign via UI in <2 minutes
+3. **Creative Upload**: Upload video creative via drag-and-drop
+4. **Ad Serving**: Request and receive ads via API (programmatic)
+5. **Analytics**: View campaign performance in dashboard
+6. **Scale**: Handle multiple concurrent users and ad requests
 
 ---
 
@@ -474,27 +844,55 @@ echo "🌐 URL: $(kubectl get ingress mvp-ingress -o jsonpath='{.status.loadBala
 ## 📋 MVP Development Checklist
 
 ### Pre-Development
-- [ ] Review and approve MVP scope
-- [ ] Set up MVP branch in git
-- [ ] Configure MVP environment variables
-- [ ] Plan MVP test data and scenarios
+- [x] Review and approve MVP scope ✅
+- [x] Set up MVP branch in git ✅
+- [x] Configure MVP environment variables ✅
+- [x] Plan MVP test data and scenarios ✅
 
-### Development Phase
-- [ ] Implement simplified database schema
-- [ ] Build MVP API endpoints
-- [ ] Create comprehensive test suite
-- [ ] Set up AWS infrastructure
+### Development Phase - Backend (Weeks 1-2)
+- [x] Implement simplified database schema ✅
+- [x] Build MVP API endpoints (campaigns, creatives) ✅
+- [x] Create comprehensive test suite (194+ tests) ✅
+- [ ] Implement ad serving endpoints (Week 3)
+- [ ] Add basic analytics endpoints (Week 3)
+
+### Development Phase - Frontend **NEW PRIORITY** (Weeks 2-3)
+**Week 2: Foundation (Something Visual)**
+- [ ] Set up Next.js 14 admin UI project with TypeScript
+- [ ] Configure TypeScript strict mode and type definitions
+- [ ] Implement login page with authentication flow
+- [ ] Build dashboard home page (basic welcome screen)
+- [ ] Build campaign list page (read from API)
+- [ ] Build campaign details page (read from API)
+- [ ] Add basic navigation and layout
+
+**Week 3: Complete Features**
+- [ ] Build campaign creation form with validation
+- [ ] Build campaign edit functionality
+- [ ] Create creative upload interface with drag-and-drop
+- [ ] Build analytics dashboard with charts
+- [ ] Add responsive design for mobile/tablet
+- [ ] Polish UI/UX and error handling
+- [ ] Set up TypeScript linting and type checking in CI
+
+### Infrastructure & Deployment
+- [ ] Set up AWS infrastructure for UI (CloudFront, S3)
+- [ ] Update Terraform configuration
 - [ ] Implement deployment automation
+- [ ] Configure CDN for UI assets
 
 ### Testing Phase
-- [ ] Unit test coverage >90%
-- [ ] Integration tests passing
+- [x] Backend unit test coverage >90% ✅
+- [x] Backend integration tests passing ✅
+- [ ] UI component tests
+- [ ] End-to-end UI tests (Cypress/Playwright)
 - [ ] Load testing validation
 - [ ] Security testing complete
-- [ ] End-to-end testing in AWS
+- [ ] Cross-browser testing
 
 ### Launch Phase
-- [ ] Documentation complete
+- [ ] API documentation complete
+- [ ] UI user guide complete
 - [ ] Demo preparation ready
 - [ ] Performance monitoring active
 - [ ] Error tracking configured
@@ -510,10 +908,11 @@ echo "🌐 URL: $(kubectl get ingress mvp-ingress -o jsonpath='{.status.loadBala
 - **RDS PostgreSQL**: ~$25/month (db.t3.micro)
 - **ElastiCache Redis**: ~$20/month (cache.t3.micro)
 - **Load Balancer**: ~$25/month
-- **S3 + CloudFront**: ~$10/month
+- **S3 + CloudFront (Creatives)**: ~$10/month
+- **S3 + CloudFront (UI Hosting)**: ~$5/month **NEW**
 - **Monitoring**: ~$15/month
 
-**Total MVP Cost**: ~$220/month (vs $500+/month for full production)
+**Total MVP Cost**: ~$225/month (vs $500+/month for full production)
 
 ---
 
