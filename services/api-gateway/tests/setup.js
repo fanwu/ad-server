@@ -132,6 +132,21 @@ async function setupTestDatabase() {
                 console.log('Running new migrations for test database...');
                 await runCampaignMigrations();
                 console.log('Test database migrations complete');
+            } else {
+                // Check if campaign_daily_stats table exists with correct schema
+                const statsTableExist = await global.testPool.query(`
+                    SELECT EXISTS (
+                        SELECT FROM information_schema.tables
+                        WHERE table_schema = 'public'
+                        AND table_name = 'campaign_daily_stats'
+                    );
+                `);
+
+                if (!statsTableExist.rows[0].exists) {
+                    console.log('Creating campaign_daily_stats table...');
+                    await runCampaignMigrations();
+                    console.log('Campaign daily stats table created');
+                }
             }
         }
     } catch (error) {
@@ -257,18 +272,17 @@ async function runCampaignMigrations() {
         CREATE TABLE IF NOT EXISTS campaign_daily_stats (
             id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
             campaign_id UUID NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
-            stat_date DATE NOT NULL,
-            impressions INTEGER DEFAULT 0,
-            clicks INTEGER DEFAULT 0,
-            completions INTEGER DEFAULT 0,
-            spend DECIMAL(10, 2) DEFAULT 0,
+            date DATE NOT NULL,
+            impressions_count INTEGER DEFAULT 0,
+            clicks_count INTEGER DEFAULT 0,
+            completions_count INTEGER DEFAULT 0,
+            spend_amount DECIMAL(12, 2) DEFAULT 0.00,
             created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
             updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-            UNIQUE(campaign_id, stat_date)
+            UNIQUE(campaign_id, date)
         );
 
-        CREATE INDEX IF NOT EXISTS idx_campaign_daily_stats_campaign ON campaign_daily_stats(campaign_id);
-        CREATE INDEX IF NOT EXISTS idx_campaign_daily_stats_date ON campaign_daily_stats(stat_date);
+        CREATE INDEX IF NOT EXISTS idx_campaign_daily_stats_campaign_date ON campaign_daily_stats(campaign_id, date);
     `);
 }
 

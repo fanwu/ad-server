@@ -129,7 +129,7 @@ describe('Campaign Integration Tests', () => {
             const campaign = await createCampaignViaApi();
 
             await global.testPool.query(
-                `INSERT INTO campaign_daily_stats (campaign_id, stat_date, impressions, clicks, completions, spend)
+                `INSERT INTO campaign_daily_stats (campaign_id, date, impressions_count, clicks_count, completions_count, spend_amount)
                  VALUES ($1, CURRENT_DATE, $2, $3, $4, $5)`,
                 [campaign.id, 1000, 125, 800, 432.50]
             );
@@ -308,7 +308,7 @@ describe('Campaign Integration Tests', () => {
             const campaign = await createCampaignViaApi();
 
             await global.testPool.query(
-                `INSERT INTO campaign_daily_stats (campaign_id, stat_date, impressions, clicks, completions, spend)
+                `INSERT INTO campaign_daily_stats (campaign_id, date, impressions_count, clicks_count, completions_count, spend_amount)
                  VALUES ($1, CURRENT_DATE, 2000, 250, 1500, 900.75)`,
                 [campaign.id]
             );
