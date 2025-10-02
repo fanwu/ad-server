@@ -67,21 +67,81 @@
 ## 🛠️ MVP Technology Stack
 
 ### Core Services Architecture
-Following the original plan but with simplified configuration:
 
-| Service | Technology | Alternative | MVP Rationale |
-|---------|------------|-------------|---------------|
-| **API Gateway** | **Node.js/Express** | Kong | Faster development, existing codebase |
-| **Ad Decision Engine** | **Go** | Rust | High performance, low latency (same as full plan) |
-| **Campaign Management** | **Node.js/TypeScript** | Python | Rapid development, consistent with gateway |
-| **Admin UI** | **React/Next.js** | Vue.js | Rich ecosystem, SSR support, rapid prototyping |
+| Service | Technology | Version | MVP Rationale |
+|---------|------------|---------|---------------|
+| **API Gateway** | **Node.js/Express** | 22.x / 4.x | Admin/management operations ✅ |
+| **Ad Serving Engine** | **Go** | 1.21+ | **Real-time ad decisions, <10ms response** |
+| **Campaign Management** | **Node.js/Express** | 22.x | Already implemented ✅ |
+| **Admin UI** | **Next.js/TypeScript** | 15.5.4 | Already implemented ✅ |
 
-### Data Layer
-| Component | Technology | MVP Justification |
-|-----------|------------|-------------------|
-| **Primary Database** | **PostgreSQL 15** | Already implemented, ACID compliance |
-| **Caching** | **Redis 7** | Already implemented, session management |
-| **File Storage** | **AWS S3** | Creative assets, proven scalability |
+**Decision: Go for Ad Serving from Day 1**
+- Ad serving requires <10ms response times - Go is essential
+- Use Gin or Fiber framework for high-performance HTTP
+- Redis as primary data store for ad decisions (not PostgreSQL)
+- PostgreSQL only for impression logging (async writes)
+
+### Data Layer - **Redis-First Architecture for Real-Time Ad Serving**
+
+| Component | Technology | Version | Role | Response Time |
+|-----------|------------|---------|------|---------------|
+| **Redis** | Redis | 7 | **PRIMARY data store for ad decisions** | Read: <1ms |
+| **PostgreSQL** | PostgreSQL | 15 | Impression logging (async writes only) | Write: 5-10ms (async) |
+| **S3** | AWS S3 | - | Creative video files | Presigned URLs |
+
+#### Redis Data Model (Primary Ad Serving Store)
+
+**Redis Sorted Sets & Hashes for Fast Lookups:**
+```
+# Active campaigns (sorted by priority/budget)
+ZSET active_campaigns  → campaign_id:score (score = remaining_budget)
+
+# Campaign metadata
+HASH campaign:{id}     → {name, budget_total, budget_spent, start_date, end_date, status}
+
+# Campaign's creatives
+SET campaign:{id}:creatives  → {creative_id1, creative_id2, ...}
+
+# Creative metadata
+HASH creative:{id}     → {name, video_url, duration, format, status}
+
+# Request counting (for budget pacing)
+INCR campaign:{id}:requests:{hour}
+INCR creative:{id}:impressions:{hour}
+```
+
+**Data Sync Strategy:**
+- Node.js API Gateway writes to PostgreSQL (source of truth)
+- **Background sync job** (Node.js) syncs PostgreSQL → Redis every 10 seconds
+- On critical updates (campaign status change), immediate Redis update
+- Redis data expires after 1 hour (TTL), forces resync
+
+#### Go Ad Server Data Flow
+
+```
+[CTV Device]
+    ↓
+POST /ad-request
+    ↓
+[Go Ad Server]
+    ↓
+1. ZRANGE active_campaigns 0 -1  (Get all active campaigns)
+2. Filter by date/budget in-memory (Go is fast)
+3. SRANDMEMBER campaign:{id}:creatives  (Random creative)
+4. HGETALL creative:{id}  (Get creative metadata)
+5. Generate S3 presigned URL
+6. Return response in <10ms
+    ↓
+[Kafka/Redis Stream] → Async impression logging
+    ↓
+[Node.js Worker] → Batch write to PostgreSQL
+```
+
+**Performance Targets:**
+- Ad Request: <10ms p99 (Go + Redis)
+- Redis Hit Rate: 100% (Redis is the primary store)
+- Impression Logging: Async, batched every 5 seconds
+- Throughput: 10,000+ req/sec per instance
 
 ### Infrastructure & Development
 | Component | Technology | MVP Configuration |

@@ -291,17 +291,67 @@ Creatives:
 ```
 
 ### Technology Stack
-| Component | Technology | Version |
-|-----------|-----------|---------|
-| **Runtime** | Node.js | 22.x |
-| **Framework** | Express.js | 4.x |
-| **Database** | PostgreSQL | 15 |
-| **Cache** | Redis | 7 |
-| **Storage** | AWS S3 | - |
-| **Testing** | Jest | 29.x |
-| **CI/CD** | GitHub Actions | - |
-| **UI** | Next.js + TypeScript | 14 |
-| **Styling** | Tailwind CSS | 3.x |
+
+#### Backend Services
+| Component | Technology | Version | Purpose |
+|-----------|-----------|---------|---------|
+| **API Gateway** | Node.js + Express | 22.x / 4.x | Campaign/Creative management |
+| **Ad Server** | **Go + Gin** | 1.21+ | **Real-time ad serving (<10ms)** |
+| **Database** | PostgreSQL | 15 | Campaign/Creative metadata (source of truth) |
+| **Primary Store** | **Redis** | 7 | **Ad decisions, campaign/creative data** |
+| **Storage** | AWS S3 (LocalStack) | - | Creative video files |
+| **Testing** | Jest + Playwright | 29.x | Unit, Integration, E2E tests |
+| **CI/CD** | GitHub Actions | - | Automated testing & deployment |
+
+#### Frontend
+| Component | Technology | Version | Purpose |
+|-----------|-----------|---------|---------|
+| **Framework** | Next.js | 15.5.4 | Admin dashboard |
+| **Language** | TypeScript | 5.x | Strict mode, full type coverage |
+| **Styling** | Tailwind CSS | 3.x | Utility-first CSS |
+| **Forms** | React Hook Form | - | Form validation |
+| **Date** | date-fns | - | Date formatting |
+
+#### Ad Serving Architecture (Redis-First, Go-Powered)
+
+**Redis Data Model (Primary Store for Ad Decisions):**
+```
+# Active campaigns (sorted by remaining budget)
+ZSET active_campaigns → campaign_id:score
+
+# Campaign data
+HASH campaign:{id} → {name, budget_total, budget_spent, start_date, end_date, status}
+
+# Campaign's creatives
+SET campaign:{id}:creatives → {creative_id1, creative_id2, ...}
+
+# Creative metadata
+HASH creative:{id} → {name, video_url, duration, format, status}
+
+# Request counting (for pacing)
+INCR campaign:{id}:requests:{hour}
+INCR creative:{id}:impressions:{hour}
+```
+
+**Data Sync:**
+- PostgreSQL = Source of truth (Node.js writes here)
+- Background job syncs PostgreSQL → Redis every 10 seconds
+- On critical updates: immediate Redis update
+- Redis TTL: 1 hour (forces periodic resync)
+
+**Performance Targets:**
+- Ad Request Response: **<10ms p99** (Go + Redis)
+- Redis Hit Rate: **100%** (Redis is primary store, not cache)
+- Throughput: 10,000+ req/sec per instance
+- Impression Logging: Async, batched every 5 seconds
+
+**Go Ad Server Flow:**
+1. ZRANGE active_campaigns (all active)
+2. Filter by date/budget (in-memory, Go is fast)
+3. SRANDMEMBER campaign:{id}:creatives (random creative)
+4. HGETALL creative:{id} (creative metadata)
+5. Generate S3 presigned URL
+6. Return in <10ms
 
 ### Development Environment
 **Services Running:**
