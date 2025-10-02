@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { campaignApi, creativeApi } from '@/lib/api';
 import { Campaign } from '@/types/campaign';
 import { Creative } from '@/types/creative';
-import { ArrowLeft, Calendar, DollarSign, TrendingUp, Film, Trash2 } from 'lucide-react';
+import { ArrowLeft, Calendar, DollarSign, TrendingUp, Film, Trash2, Play } from 'lucide-react';
 import { format } from 'date-fns';
 
 export default function CampaignDetailsPage() {
@@ -281,6 +281,17 @@ export default function CampaignDetailsPage() {
                     <span className="font-medium uppercase">{creative.format}</span>
                   </div>
                 </div>
+                {creative.status === 'active' && creative.video_url && (
+                  <a
+                    href={creative.video_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="mt-3 flex items-center justify-center gap-2 px-3 py-2 bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 transition-colors text-sm font-medium"
+                  >
+                    <Play className="w-4 h-4" />
+                    Preview Video
+                  </a>
+                )}
               </div>
             ))}
           </div>

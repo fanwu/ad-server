@@ -18,14 +18,17 @@ export default function Sidebar() {
 
   const handleLogout = async () => {
     try {
+      console.log('[Logout] Starting logout...');
       await authApi.logout();
+      console.log('[Logout] API call successful');
+    } catch (error) {
+      console.error('[Logout] API call failed:', error);
+      // Continue with logout even if API call fails
+    } finally {
+      console.log('[Logout] Removing token and redirecting...');
       tokenStorage.removeToken();
       router.push('/login');
       router.refresh();
-    } catch (error) {
-      console.error('Logout failed:', error);
-      tokenStorage.removeToken();
-      router.push('/login');
     }
   };
 
