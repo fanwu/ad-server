@@ -3,6 +3,7 @@ const app = require('./app');
 const logger = require('./utils/logger');
 const redis = require('./services/redisService');
 const authService = require('./services/authService');
+const redisSyncService = require('./services/redis-sync.service');
 
 const PORT = process.env.PORT || 3000;
 
@@ -16,6 +17,9 @@ async function startServer() {
         logger.info('Testing database connection...');
         await authService.pool.query('SELECT NOW()');
         logger.info('Database connection successful');
+
+        // Start Redis sync service
+        redisSyncService.start();
 
         // Start the server
         const server = app.listen(PORT, () => {
@@ -42,6 +46,9 @@ async function startServer() {
                 logger.info('HTTP server closed');
 
                 try {
+                    // Stop Redis sync service
+                    redisSyncService.stop();
+
                     await redis.disconnect();
                     logger.info('Redis connection closed');
 

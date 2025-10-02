@@ -4,7 +4,7 @@
   "description": "API Gateway service for CTV Ad Server",
   "main": "src/server.js",
   "scripts": {
-    "dev": "nodemon src/server.js",
+    "dev": "nodemon",
     "start": "node src/server.js",
     "test": "jest",
     "test:watch": "jest --watch",
