@@ -89,6 +89,14 @@ afterAll(async () => {
         console.warn('Error closing auth service:', error.message);
     }
 
+    // Stop the Redis sync service to clear its interval
+    try {
+        const redisSyncService = require('../src/services/redis-sync.service');
+        redisSyncService.stop();
+    } catch (error) {
+        console.warn('Error stopping Redis sync service:', error.message);
+    }
+
     // Give a small delay to ensure all connections are properly closed
     await new Promise(resolve => setTimeout(resolve, 200));
 });
