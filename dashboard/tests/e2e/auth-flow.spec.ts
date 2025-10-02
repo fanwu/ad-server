@@ -222,3 +222,212 @@ test.describe('API Integration', () => {
     console.log('✅ Campaigns page loaded successfully');
   });
 });
+
+test.describe('Campaign Creation', () => {
+  test.beforeEach(async ({ page }) => {
+    // Clear cookies and localStorage before each test
+    await page.context().clearCookies();
+
+    // Listen to console logs
+    page.on('console', (msg) => {
+      const type = msg.type();
+      if (type === 'log' || type === 'error' || type === 'warning') {
+        console.log(`[Browser ${type}]:`, msg.text());
+      }
+    });
+
+    // Login before each test
+    await page.goto(`${DASHBOARD_URL}/login`);
+    await page.fill('input[type="email"]', 'advertiser@adserver.dev');
+    await page.fill('input[type="password"]', 'password123');
+    await page.click('button[type="submit"]');
+    await page.waitForURL(/\/$/, { timeout: 10000 });
+  });
+
+  test('should navigate to campaign creation form', async ({ page }) => {
+    console.log('🔍 Testing: Navigate to campaign creation form...');
+
+    // Navigate to campaigns page
+    await page.click('text=Campaigns');
+    await page.waitForURL('**/campaigns', { timeout: 5000 });
+    console.log('✅ On campaigns page');
+
+    // Click "New Campaign" button
+    await page.click('text=New Campaign');
+    await page.waitForURL('**/campaigns/new', { timeout: 5000 });
+    console.log('✅ Navigated to campaign creation form');
+
+    expect(page.url()).toContain('/campaigns/new');
+
+    // Check form elements are visible
+    await expect(page.locator('h1:has-text("Create Campaign")')).toBeVisible();
+    await expect(page.locator('input[name="name"]')).toBeVisible();
+    await expect(page.locator('textarea[name="description"]')).toBeVisible();
+    await expect(page.locator('input[name="budget_total"]')).toBeVisible();
+    await expect(page.locator('input[name="start_date"]')).toBeVisible();
+    await expect(page.locator('input[name="end_date"]')).toBeVisible();
+    console.log('✅ All form elements visible');
+  });
+
+  test('should show validation errors for empty form', async ({ page }) => {
+    console.log('🔍 Testing: Form validation errors...');
+
+    // Navigate to campaign creation form
+    await page.goto(`${DASHBOARD_URL}/campaigns/new`);
+    console.log('✅ On campaign creation form');
+
+    // Try to submit empty form
+    await page.click('button:has-text("Create Campaign")');
+    console.log('🔘 Submitted empty form');
+
+    // Wait for validation errors to appear
+    await page.waitForTimeout(500);
+
+    // Check for validation errors
+    const errorCount = await page.locator('text=/required|must be/i').count();
+    expect(errorCount).toBeGreaterThan(0);
+    console.log(`✅ Validation errors displayed (${errorCount} errors)`);
+  });
+
+  test('should create campaign with valid data', async ({ page }) => {
+    console.log('🔍 Testing: Create campaign with valid data...');
+
+    // Navigate to campaign creation form
+    await page.goto(`${DASHBOARD_URL}/campaigns/new`);
+    console.log('✅ On campaign creation form');
+
+    // Generate unique campaign name
+    const timestamp = Date.now();
+    const campaignName = `E2E Test Campaign ${timestamp}`;
+
+    // Fill form with valid data
+    await page.fill('input[name="name"]', campaignName);
+    await page.fill('textarea[name="description"]', 'This is a test campaign created by E2E tests');
+    await page.fill('input[name="budget_total"]', '10000');
+
+    // Set dates (start date = today, end date = 7 days from now)
+    const today = new Date();
+    const futureDate = new Date(today);
+    futureDate.setDate(today.getDate() + 7);
+
+    const startDate = today.toISOString().split('T')[0];
+    const endDate = futureDate.toISOString().split('T')[0];
+
+    await page.fill('input[name="start_date"]', startDate);
+    await page.fill('input[name="end_date"]', endDate);
+    console.log('✅ Filled form with valid data');
+
+    // Submit form
+    await page.click('button:has-text("Create Campaign")');
+    console.log('🔘 Submitted form');
+
+    // Should redirect to campaigns list
+    await page.waitForURL('**/campaigns', { timeout: 10000 });
+    console.log('✅ Redirected to campaigns list');
+
+    expect(page.url()).toContain('/campaigns');
+    expect(page.url()).not.toContain('/campaigns/new');
+  });
+
+  test('should show error for invalid date range', async ({ page }) => {
+    console.log('🔍 Testing: Invalid date range validation...');
+
+    // Navigate to campaign creation form
+    await page.goto(`${DASHBOARD_URL}/campaigns/new`);
+    console.log('✅ On campaign creation form');
+
+    // Fill form with invalid date range (end date before start date)
+    await page.fill('input[name="name"]', 'Invalid Date Campaign');
+    await page.fill('input[name="budget_total"]', '5000');
+
+    const today = new Date();
+    const yesterday = new Date(today);
+    yesterday.setDate(today.getDate() - 1);
+
+    const startDate = today.toISOString().split('T')[0];
+    const endDate = yesterday.toISOString().split('T')[0];
+
+    await page.fill('input[name="start_date"]', startDate);
+    await page.fill('input[name="end_date"]', endDate);
+    console.log('✅ Filled form with invalid date range');
+
+    // Submit form
+    await page.click('button:has-text("Create Campaign")');
+    console.log('🔘 Submitted form');
+
+    // Wait for validation error
+    await page.waitForTimeout(500);
+
+    // Should show validation error about date range
+    await expect(page.locator('text=/End date must be after start date/i')).toBeVisible();
+    console.log('✅ Date range validation error displayed');
+
+    // Should still be on form page
+    expect(page.url()).toContain('/campaigns/new');
+  });
+
+  test('should cancel campaign creation', async ({ page }) => {
+    console.log('🔍 Testing: Cancel campaign creation...');
+
+    // Navigate to campaign creation form
+    await page.goto(`${DASHBOARD_URL}/campaigns/new`);
+    console.log('✅ On campaign creation form');
+
+    // Fill some data
+    await page.fill('input[name="name"]', 'Campaign to Cancel');
+    console.log('✅ Filled partial data');
+
+    // Click cancel button
+    await page.click('text=Cancel');
+    console.log('🔘 Clicked cancel');
+
+    // Should redirect to campaigns list
+    await page.waitForURL('**/campaigns', { timeout: 5000 });
+    console.log('✅ Redirected to campaigns list');
+
+    expect(page.url()).toContain('/campaigns');
+    expect(page.url()).not.toContain('/campaigns/new');
+  });
+
+  test('should accept today as start date', async ({ page }) => {
+    console.log('🔍 Testing: Today is valid start date...');
+
+    // Navigate to campaign creation form
+    await page.goto(`${DASHBOARD_URL}/campaigns/new`);
+    console.log('✅ On campaign creation form');
+
+    // Get today's date in YYYY-MM-DD format
+    const today = new Date();
+    const todayStr = today.toISOString().split('T')[0];
+    const futureDate = new Date(today);
+    futureDate.setDate(today.getDate() + 7);
+    const futureDateStr = futureDate.toISOString().split('T')[0];
+
+    console.log(`Using today: ${todayStr}`);
+
+    // Fill form with today as start date
+    await page.fill('input[name="name"]', 'Today Start Date Campaign');
+    await page.fill('input[name="budget_total"]', '5000');
+    await page.fill('input[name="start_date"]', todayStr);
+    await page.fill('input[name="end_date"]', futureDateStr);
+    console.log('✅ Filled form with today as start date');
+
+    // Submit form
+    await page.click('button:has-text("Create Campaign")');
+    console.log('🔘 Submitted form');
+
+    // Should NOT show validation error for start date
+    await page.waitForTimeout(500);
+
+    const hasStartDateError = await page.locator('text=/Start date must be today or in the future/i').isVisible();
+    expect(hasStartDateError).toBeFalsy();
+    console.log('✅ No start date validation error (today is accepted)');
+
+    // Should redirect to campaigns list
+    await page.waitForURL('**/campaigns', { timeout: 10000 });
+    console.log('✅ Successfully created campaign with today as start date');
+
+    expect(page.url()).toContain('/campaigns');
+    expect(page.url()).not.toContain('/campaigns/new');
+  });
+});

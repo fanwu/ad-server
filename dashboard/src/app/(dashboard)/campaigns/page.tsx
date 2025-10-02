@@ -85,13 +85,13 @@ export default function CampaignsPage() {
           <h1 className="text-3xl font-bold text-gray-900">Campaigns</h1>
           <p className="text-gray-600 mt-2">Manage your advertising campaigns</p>
         </div>
-        <button
-          disabled
-          className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+        <Link
+          href="/campaigns/new"
+          className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
         >
           <Plus className="w-5 h-5 mr-2" />
           New Campaign
-        </button>
+        </Link>
       </div>
 
       {/* Filters */}

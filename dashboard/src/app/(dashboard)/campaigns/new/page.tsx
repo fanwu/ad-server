@@ -1,0 +1,192 @@
+'use client';
+
+import { useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { campaignApi } from '@/lib/api';
+import { createCampaignSchema, type CreateCampaignFormData } from '@/lib/validations/campaign';
+import { ArrowLeft, Save } from 'lucide-react';
+import Link from 'next/link';
+
+export default function NewCampaignPage() {
+  const router = useRouter();
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState('');
+
+  const {
+    register,
+    handleSubmit,
+    formState: { errors },
+  } = useForm<CreateCampaignFormData>({
+    resolver: zodResolver(createCampaignSchema),
+    defaultValues: {
+      name: '',
+      description: '',
+      budget_total: undefined,
+      start_date: '',
+      end_date: '',
+    },
+  });
+
+  const onSubmit = async (data: CreateCampaignFormData) => {
+    try {
+      setIsSubmitting(true);
+      setError('');
+
+      // Convert budget to number if it's a string
+      const campaignData = {
+        ...data,
+        budget_total: Number(data.budget_total),
+        description: data.description || undefined,
+      };
+
+      await campaignApi.create(campaignData);
+
+      // Redirect to campaigns list on success
+      router.push('/campaigns');
+    } catch (err: any) {
+      setError(err.message || 'Failed to create campaign');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="max-w-3xl mx-auto space-y-6">
+      {/* Header */}
+      <div className="flex items-center gap-4">
+        <Link
+          href="/campaigns"
+          className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+        >
+          <ArrowLeft className="w-5 h-5" />
+        </Link>
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900">Create Campaign</h1>
+          <p className="text-gray-600 mt-1">Set up a new advertising campaign</p>
+        </div>
+      </div>
+
+      {/* Error Alert */}
+      {error && (
+        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
+          <p className="font-medium">Error creating campaign</p>
+          <p className="text-sm mt-1">{error}</p>
+        </div>
+      )}
+
+      {/* Form */}
+      <form onSubmit={handleSubmit(onSubmit)} className="bg-white rounded-lg shadow border border-gray-200 p-6 space-y-6">
+        {/* Campaign Name */}
+        <div>
+          <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-1">
+            Campaign Name <span className="text-red-500">*</span>
+          </label>
+          <input
+            id="name"
+            type="text"
+            {...register('name')}
+            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            placeholder="e.g. Summer Sale 2025"
+          />
+          {errors.name && (
+            <p className="mt-1 text-sm text-red-600">{errors.name.message}</p>
+          )}
+        </div>
+
+        {/* Description */}
+        <div>
+          <label htmlFor="description" className="block text-sm font-medium text-gray-700 mb-1">
+            Description
+          </label>
+          <textarea
+            id="description"
+            {...register('description')}
+            rows={3}
+            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+            placeholder="Describe your campaign objectives and target audience"
+          />
+          {errors.description && (
+            <p className="mt-1 text-sm text-red-600">{errors.description.message}</p>
+          )}
+        </div>
+
+        {/* Budget */}
+        <div>
+          <label htmlFor="budget_total" className="block text-sm font-medium text-gray-700 mb-1">
+            Total Budget ($) <span className="text-red-500">*</span>
+          </label>
+          <input
+            id="budget_total"
+            type="number"
+            step="0.01"
+            min="0"
+            {...register('budget_total', { valueAsNumber: true })}
+            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            placeholder="5000.00"
+          />
+          {errors.budget_total && (
+            <p className="mt-1 text-sm text-red-600">{errors.budget_total.message}</p>
+          )}
+          <p className="mt-1 text-sm text-gray-500">
+            Enter the total budget allocated for this campaign
+          </p>
+        </div>
+
+        {/* Date Range */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Start Date */}
+          <div>
+            <label htmlFor="start_date" className="block text-sm font-medium text-gray-700 mb-1">
+              Start Date <span className="text-red-500">*</span>
+            </label>
+            <input
+              id="start_date"
+              type="date"
+              {...register('start_date')}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            />
+            {errors.start_date && (
+              <p className="mt-1 text-sm text-red-600">{errors.start_date.message}</p>
+            )}
+          </div>
+
+          {/* End Date */}
+          <div>
+            <label htmlFor="end_date" className="block text-sm font-medium text-gray-700 mb-1">
+              End Date <span className="text-red-500">*</span>
+            </label>
+            <input
+              id="end_date"
+              type="date"
+              {...register('end_date')}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            />
+            {errors.end_date && (
+              <p className="mt-1 text-sm text-red-600">{errors.end_date.message}</p>
+            )}
+          </div>
+        </div>
+
+        {/* Form Actions */}
+        <div className="flex items-center justify-end gap-3 pt-4 border-t border-gray-200">
+          <Link
+            href="/campaigns"
+            className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+          >
+            Cancel
+          </Link>
+          <button
+            type="submit"
+            disabled={isSubmitting}
+            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            <Save className="w-4 h-4" />
+            {isSubmitting ? 'Creating...' : 'Create Campaign'}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
