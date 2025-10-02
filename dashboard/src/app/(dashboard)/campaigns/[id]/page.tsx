@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { campaignApi, creativeApi } from '@/lib/api';
 import { Campaign } from '@/types/campaign';
 import { Creative } from '@/types/creative';
-import { ArrowLeft, Calendar, DollarSign, TrendingUp, Film } from 'lucide-react';
+import { ArrowLeft, Calendar, DollarSign, TrendingUp, Film, Trash2 } from 'lucide-react';
 import { format } from 'date-fns';
 
 export default function CampaignDetailsPage() {
@@ -18,6 +18,7 @@ export default function CampaignDetailsPage() {
   const [creatives, setCreatives] = useState<Creative[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [deletingCreativeId, setDeletingCreativeId] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -38,6 +39,23 @@ export default function CampaignDetailsPage() {
 
     fetchData();
   }, [campaignId]);
+
+  const handleDeleteCreative = async (creativeId: string) => {
+    if (!confirm('Are you sure you want to delete this creative? This action cannot be undone.')) {
+      return;
+    }
+
+    try {
+      setDeletingCreativeId(creativeId);
+      await creativeApi.delete(creativeId);
+      // Remove from local state
+      setCreatives((prev) => prev.filter((c) => c.id !== creativeId));
+    } catch (err: any) {
+      alert(err.message || 'Failed to delete creative');
+    } finally {
+      setDeletingCreativeId(null);
+    }
+  };
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -69,7 +87,7 @@ export default function CampaignDetailsPage() {
     return (
       <div className="space-y-4">
         <Link
-          href="/dashboard/campaigns"
+          href="/campaigns"
           className="inline-flex items-center text-blue-600 hover:text-blue-800"
         >
           <ArrowLeft className="w-4 h-4 mr-2" />
@@ -90,7 +108,7 @@ export default function CampaignDetailsPage() {
       {/* Header */}
       <div>
         <Link
-          href="/dashboard/campaigns"
+          href="/campaigns"
           className="inline-flex items-center text-blue-600 hover:text-blue-800 mb-4"
         >
           <ArrowLeft className="w-4 h-4 mr-2" />
@@ -195,12 +213,12 @@ export default function CampaignDetailsPage() {
       <div className="bg-white rounded-lg shadow border border-gray-200 p-6">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold text-gray-900">Creatives</h2>
-          <button
-            disabled
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+          <Link
+            href={`/campaigns/${campaignId}/creatives/new`}
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm transition-colors"
           >
             Upload Creative
-          </button>
+          </Link>
         </div>
 
         {creatives.length === 0 ? (
@@ -220,15 +238,29 @@ export default function CampaignDetailsPage() {
               >
                 <div className="flex items-center justify-between mb-3">
                   <Film className="w-8 h-8 text-blue-600" />
-                  <span
-                    className={`px-2 py-1 text-xs font-medium rounded ${
-                      creative.status === 'active'
-                        ? 'bg-green-100 text-green-800'
-                        : 'bg-gray-100 text-gray-800'
-                    }`}
-                  >
-                    {creative.status}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span
+                      className={`px-2 py-1 text-xs font-medium rounded ${
+                        creative.status === 'active'
+                          ? 'bg-green-100 text-green-800'
+                          : creative.status === 'processing'
+                          ? 'bg-yellow-100 text-yellow-800'
+                          : creative.status === 'failed'
+                          ? 'bg-red-100 text-red-800'
+                          : 'bg-gray-100 text-gray-800'
+                      }`}
+                    >
+                      {creative.status}
+                    </span>
+                    <button
+                      onClick={() => handleDeleteCreative(creative.id)}
+                      disabled={deletingCreativeId === creative.id}
+                      className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors disabled:opacity-50"
+                      title="Delete creative"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
                 <h3 className="font-medium text-gray-900 mb-2">{creative.name}</h3>
                 <div className="space-y-1 text-sm text-gray-600">

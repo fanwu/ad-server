@@ -431,3 +431,257 @@ test.describe('Campaign Creation', () => {
     expect(page.url()).not.toContain('/campaigns/new');
   });
 });
+
+test.describe('Creative Upload', () => {
+  let campaignId: string;
+
+  test.beforeEach(async ({ page }) => {
+    // Clear cookies and localStorage before each test
+    await page.context().clearCookies();
+
+    // Listen to console logs
+    page.on('console', (msg) => {
+      const type = msg.type();
+      if (type === 'log' || type === 'error' || type === 'warning') {
+        console.log(`[Browser ${type}]:`, msg.text());
+      }
+    });
+
+    // Login before each test
+    await page.goto(`${DASHBOARD_URL}/login`);
+    await page.fill('input[type="email"]', 'advertiser@adserver.dev');
+    await page.fill('input[type="password"]', 'password123');
+    await page.click('button[type="submit"]');
+    await page.waitForURL(/\/$/, { timeout: 10000 });
+
+    // Create a test campaign
+    await page.goto(`${DASHBOARD_URL}/campaigns/new`);
+    const timestamp = Date.now();
+    const campaignName = `Creative Test Campaign ${timestamp}`;
+
+    const today = new Date();
+    const futureDate = new Date(today);
+    futureDate.setDate(today.getDate() + 7);
+    const startDate = today.toISOString().split('T')[0];
+    const endDate = futureDate.toISOString().split('T')[0];
+
+    await page.fill('input[name="name"]', campaignName);
+    await page.fill('textarea[name="description"]', 'Campaign for creative upload testing');
+    await page.fill('input[name="budget_total"]', '5000');
+    await page.fill('input[name="start_date"]', startDate);
+    await page.fill('input[name="end_date"]', endDate);
+    await page.click('button:has-text("Create Campaign")');
+    await page.waitForURL('**/campaigns', { timeout: 10000 });
+
+    // Extract campaign ID from the campaigns list
+    await page.waitForTimeout(1000);
+
+    // Find the row containing the campaign name, then get the "View Details" link
+    const campaignRow = page.locator('tr').filter({ hasText: campaignName });
+    const viewDetailsLink = campaignRow.locator('a:has-text("View Details")');
+    const href = await viewDetailsLink.getAttribute('href');
+    campaignId = href?.split('/').pop() || '';
+    console.log(`✅ Created test campaign: ${campaignId}`);
+  });
+
+  test('should navigate to creative upload form', async ({ page }) => {
+    console.log('🔍 Testing: Navigate to creative upload form...');
+
+    // Navigate to campaign details
+    await page.goto(`${DASHBOARD_URL}/campaigns/${campaignId}`);
+    console.log('✅ On campaign details page');
+
+    // Click "Upload Creative" button
+    await page.click('text=Upload Creative');
+    await page.waitForURL(`**/campaigns/${campaignId}/creatives/new`, { timeout: 5000 });
+    console.log('✅ Navigated to creative upload form');
+
+    expect(page.url()).toContain(`/campaigns/${campaignId}/creatives/new`);
+
+    // Check form elements are visible
+    await expect(page.locator('h1:has-text("Upload Creative")')).toBeVisible();
+    await expect(page.locator('text=Drop your video file here')).toBeVisible();
+    await expect(page.locator('input#name')).toBeVisible();
+    console.log('✅ All form elements visible');
+  });
+
+  test('should disable submit button when no file selected', async ({ page }) => {
+    console.log('🔍 Testing: Button disabled without file...');
+
+    // Navigate to upload form
+    await page.goto(`${DASHBOARD_URL}/campaigns/${campaignId}/creatives/new`);
+    console.log('✅ On creative upload form');
+
+    // Check that submit button is disabled when no file is selected
+    const submitButton = page.locator('button:has-text("Upload Creative")');
+    await expect(submitButton).toBeDisabled();
+    console.log('✅ Submit button is disabled without file');
+
+    // Should still be on upload page
+    expect(page.url()).toContain(`/campaigns/${campaignId}/creatives/new`);
+  });
+
+  test('should disable submit button when name is empty', async ({ page }) => {
+    console.log('🔍 Testing: Button disabled without name...');
+
+    // Navigate to upload form
+    await page.goto(`${DASHBOARD_URL}/campaigns/${campaignId}/creatives/new`);
+    console.log('✅ On creative upload form');
+
+    // Create a fake video file using the file input
+    const fileContent = Buffer.from('fake video content');
+    const testFile = {
+      name: 'test-video.mp4',
+      mimeType: 'video/mp4',
+      buffer: fileContent,
+    };
+
+    // Attach file
+    const fileInput = page.locator('input[type="file"]');
+    await fileInput.setInputFiles({
+      name: testFile.name,
+      mimeType: testFile.mimeType,
+      buffer: testFile.buffer,
+    });
+    console.log('✅ File attached');
+
+    // Clear the name field (it auto-fills from filename)
+    await page.fill('input#name', '');
+    console.log('✅ Cleared name field');
+
+    // Wait for React to update
+    await page.waitForTimeout(100);
+
+    // Check that submit button is disabled
+    const submitButton = page.locator('button:has-text("Upload Creative")');
+    await expect(submitButton).toBeDisabled();
+    console.log('✅ Submit button is disabled without name');
+
+    // Should still be on upload page
+    expect(page.url()).toContain(`/campaigns/${campaignId}/creatives/new`);
+  });
+
+  test('should auto-fill name from filename', async ({ page }) => {
+    console.log('🔍 Testing: Auto-fill name from filename...');
+
+    // Navigate to upload form
+    await page.goto(`${DASHBOARD_URL}/campaigns/${campaignId}/creatives/new`);
+    console.log('✅ On creative upload form');
+
+    // Create a fake video file
+    const fileContent = Buffer.from('fake video content');
+    const testFile = {
+      name: 'my-awesome-video.mp4',
+      mimeType: 'video/mp4',
+      buffer: fileContent,
+    };
+
+    // Attach file
+    const fileInput = page.locator('input[type="file"]');
+    await fileInput.setInputFiles({
+      name: testFile.name,
+      mimeType: testFile.mimeType,
+      buffer: testFile.buffer,
+    });
+    console.log('✅ File attached');
+
+    // Wait for name to be auto-filled
+    await page.waitForTimeout(500);
+
+    // Check that name field contains filename without extension
+    const nameValue = await page.locator('input#name').inputValue();
+    expect(nameValue).toBe('my-awesome-video');
+    console.log('✅ Name auto-filled from filename');
+  });
+
+  test('should allow removing selected file', async ({ page }) => {
+    console.log('🔍 Testing: Remove selected file...');
+
+    // Navigate to upload form
+    await page.goto(`${DASHBOARD_URL}/campaigns/${campaignId}/creatives/new`);
+    console.log('✅ On creative upload form');
+
+    // Create a fake video file
+    const fileContent = Buffer.from('fake video content');
+    const testFile = {
+      name: 'test-video.mp4',
+      mimeType: 'video/mp4',
+      buffer: fileContent,
+    };
+
+    // Attach file
+    const fileInput = page.locator('input[type="file"]');
+    await fileInput.setInputFiles({
+      name: testFile.name,
+      mimeType: testFile.mimeType,
+      buffer: testFile.buffer,
+    });
+    console.log('✅ File attached');
+
+    // Wait for file to be displayed
+    await page.waitForTimeout(500);
+    await expect(page.locator('text=test-video.mp4')).toBeVisible();
+    console.log('✅ File displayed');
+
+    // Click remove button (X button)
+    await page.click('button[aria-label="Remove file"]');
+    console.log('🔘 Clicked remove button');
+
+    // Wait for file to be removed
+    await page.waitForTimeout(500);
+
+    // Should show upload area again
+    await expect(page.locator('text=Drop your video file here')).toBeVisible();
+    console.log('✅ File removed, upload area visible again');
+  });
+
+  test('should cancel upload and return to campaign details', async ({ page }) => {
+    console.log('🔍 Testing: Cancel upload...');
+
+    // Navigate to upload form
+    await page.goto(`${DASHBOARD_URL}/campaigns/${campaignId}/creatives/new`);
+    console.log('✅ On creative upload form');
+
+    // Click cancel
+    await page.click('text=Cancel');
+    console.log('🔘 Clicked cancel');
+
+    // Should redirect to campaign details
+    await page.waitForURL(`**/campaigns/${campaignId}`, { timeout: 5000 });
+    console.log('✅ Redirected to campaign details');
+
+    expect(page.url()).toContain(`/campaigns/${campaignId}`);
+    expect(page.url()).not.toContain('/creatives/new');
+  });
+
+  test('should navigate back to campaigns list from campaign details', async ({ page }) => {
+    console.log('🔍 Testing: Back to campaigns navigation...');
+
+    // Navigate to campaign details
+    await page.goto(`${DASHBOARD_URL}/campaigns/${campaignId}`);
+    console.log('✅ On campaign details page');
+
+    // Wait for page to load
+    await page.waitForTimeout(1000);
+
+    // Click "Back to Campaigns" link
+    await page.click('text=Back to Campaigns');
+    console.log('🔘 Clicked Back to Campaigns');
+
+    // Should redirect to campaigns list
+    await page.waitForURL('**/campaigns', { timeout: 5000 });
+    console.log('✅ Redirected to campaigns list');
+
+    expect(page.url()).toContain('/campaigns');
+    expect(page.url()).not.toContain(`/${campaignId}`);
+
+    // Should not show 404 error
+    const has404 = await page.locator('text=/404|not found/i').isVisible();
+    expect(has404).toBeFalsy();
+    console.log('✅ No 404 error displayed');
+
+    // Should see campaigns page elements
+    await expect(page.locator('main h1:has-text("Campaigns")')).toBeVisible();
+    console.log('✅ Campaigns page loaded successfully');
+  });
+});
