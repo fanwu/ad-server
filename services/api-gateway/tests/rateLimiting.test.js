@@ -256,6 +256,10 @@ describe('Rate Limiting Tests', () => {
 
         afterEach(async () => {
             if (testUser) {
+                // Delete in order to respect foreign key constraints
+                await global.testPool.query('DELETE FROM impressions WHERE campaign_id IN (SELECT id FROM campaigns WHERE created_by = $1)', [testUser.id]);
+                await global.testPool.query('DELETE FROM creatives WHERE uploaded_by = $1', [testUser.id]);
+                await global.testPool.query('DELETE FROM campaigns WHERE created_by = $1', [testUser.id]);
                 await global.testPool.query('DELETE FROM users WHERE id = $1', [testUser.id]);
             }
             testCampaign = null;

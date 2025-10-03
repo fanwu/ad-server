@@ -49,6 +49,10 @@ describe('Campaign Integration Tests', () => {
 
     afterEach(async () => {
         if (testUser) {
+            // Delete in order to respect foreign key constraints
+            await global.testPool.query('DELETE FROM impressions WHERE campaign_id IN (SELECT id FROM campaigns WHERE created_by = $1)', [testUser.id]);
+            await global.testPool.query('DELETE FROM creatives WHERE uploaded_by = $1', [testUser.id]);
+            await global.testPool.query('DELETE FROM campaigns WHERE created_by = $1', [testUser.id]);
             await global.testPool.query('DELETE FROM users WHERE id = $1', [testUser.id]);
             testUser = null;
             authToken = null;
@@ -246,7 +250,12 @@ describe('Campaign Integration Tests', () => {
 
             expect(response.body.error.code).toBe('CAMPAIGN_NOT_FOUND');
 
-            await global.testPool.query('DELETE FROM users WHERE id = $1', [otherUser.body.user.id]);
+            // Clean up other user's data in order
+            const otherUserId = otherUser.body.user.id;
+            await global.testPool.query('DELETE FROM impressions WHERE campaign_id IN (SELECT id FROM campaigns WHERE created_by = $1)', [otherUserId]);
+            await global.testPool.query('DELETE FROM creatives WHERE uploaded_by = $1', [otherUserId]);
+            await global.testPool.query('DELETE FROM campaigns WHERE created_by = $1', [otherUserId]);
+            await global.testPool.query('DELETE FROM users WHERE id = $1', [otherUserId]);
         });
     });
 

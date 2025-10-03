@@ -6,12 +6,18 @@
 const { Pool } = require('pg');
 const redis = require('redis');
 
+// Load .env.test file if running locally (not in Docker)
+if (!process.env.INSIDE_DOCKER_TEST) {
+    require('dotenv').config({ path: require('path').join(__dirname, '../.env.test') });
+}
+
 // Set test environment
 process.env.NODE_ENV = 'test';
 process.env.LOG_LEVEL = 'error'; // Reduce log noise during tests
-process.env.DATABASE_URL = process.env.DATABASE_TEST_URL || 'postgresql://adserver:dev_password@localhost:5432/adserver_test';
-process.env.REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379';
-process.env.JWT_SECRET = 'test-jwt-secret-key-for-testing-only';
+// Use test ports by default (will be overridden by docker-compose or .env.test)
+process.env.DATABASE_URL = process.env.DATABASE_URL || 'postgresql://adserver:dev_password@localhost:5433/adserver_test';
+process.env.REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6380';
+process.env.JWT_SECRET = process.env.JWT_SECRET || 'test-jwt-secret-key-for-testing-only';
 
 // Global test setup
 global.testPool = null;
@@ -49,7 +55,8 @@ afterAll(async () => {
     if (global.testPool) {
         try {
             // Simplified cleanup - truncate all tables for faster cleanup
-            await global.testPool.query("TRUNCATE ad_completions, ad_clicks, ad_impressions, ad_requests, campaign_daily_stats, creatives, campaigns, users RESTART IDENTITY CASCADE");
+            // Using actual table names from migrations
+            await global.testPool.query("TRUNCATE impressions, ad_requests, campaign_daily_stats, creatives, campaigns, users RESTART IDENTITY CASCADE");
         } catch (error) {
             console.warn('Final test cleanup skipped:', error.message);
         }
@@ -107,7 +114,7 @@ beforeEach(async () => {
 
 async function setupTestDatabase() {
     try {
-        // Check if test database tables exist, if not run migrations
+        // Check if tables exist
         const result = await global.testPool.query(`
             SELECT EXISTS (
                 SELECT FROM information_schema.tables
@@ -116,41 +123,16 @@ async function setupTestDatabase() {
             );
         `);
 
+        // Only run migrations if tables don't exist
         if (!result.rows[0].exists) {
-            console.log('Setting up test database schema...');
-            // Run migrations for test database
-            await runTestMigrations();
-            console.log('Test database schema setup complete');
-        } else {
-            // Check if campaigns table exists, if not run new migrations
-            const campaignsExist = await global.testPool.query(`
-                SELECT EXISTS (
-                    SELECT FROM information_schema.tables
-                    WHERE table_schema = 'public'
-                    AND table_name = 'campaigns'
-                );
-            `);
+            const DatabaseMigrator = require('../../../shared/database/migrate');
+            const migrator = new DatabaseMigrator(process.env.DATABASE_URL);
 
-            if (!campaignsExist.rows[0].exists) {
-                console.log('Running new migrations for test database...');
-                await runCampaignMigrations();
-                console.log('Test database migrations complete');
-            } else {
-                // Check if campaign_daily_stats table exists with correct schema
-                const statsTableExist = await global.testPool.query(`
-                    SELECT EXISTS (
-                        SELECT FROM information_schema.tables
-                        WHERE table_schema = 'public'
-                        AND table_name = 'campaign_daily_stats'
-                    );
-                `);
+            console.log('Running test database migrations...');
+            await migrator.migrate();
+            console.log('Test database migrations complete');
 
-                if (!statsTableExist.rows[0].exists) {
-                    console.log('Creating campaign_daily_stats table...');
-                    await runCampaignMigrations();
-                    console.log('Campaign daily stats table created');
-                }
-            }
+            await migrator.close();
         }
     } catch (error) {
         console.error('Failed to setup test database:', error);
@@ -158,136 +140,6 @@ async function setupTestDatabase() {
     }
 }
 
-async function runTestMigrations() {
-    // Create all tables needed for tests
-    await global.testPool.query(`
-        CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
-
-        CREATE TABLE IF NOT EXISTS users (
-            id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-            email VARCHAR(255) UNIQUE NOT NULL,
-            password_hash VARCHAR(255) NOT NULL,
-            name VARCHAR(255) NOT NULL,
-            role VARCHAR(20) DEFAULT 'advertiser' CHECK (role IN ('admin', 'advertiser', 'viewer')),
-            status VARCHAR(20) DEFAULT 'active' CHECK (status IN ('active', 'inactive', 'suspended')),
-            created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-            updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-        );
-
-        CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
-        CREATE INDEX IF NOT EXISTS idx_users_status ON users(status);
-    `);
-
-    await runCampaignMigrations();
-}
-
-async function runCampaignMigrations() {
-    // Create campaigns table
-    await global.testPool.query(`
-        CREATE TABLE IF NOT EXISTS campaigns (
-            id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-            name VARCHAR(255) NOT NULL,
-            description TEXT,
-            status VARCHAR(20) DEFAULT 'draft' CHECK (status IN ('draft', 'active', 'paused', 'completed', 'cancelled')),
-            budget_total DECIMAL(10, 2) NOT NULL CHECK (budget_total >= 0),
-            budget_spent DECIMAL(10, 2) DEFAULT 0 CHECK (budget_spent >= 0),
-            start_date TIMESTAMP WITH TIME ZONE NOT NULL,
-            end_date TIMESTAMP WITH TIME ZONE NOT NULL,
-            created_by UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-            created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-            updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-            CONSTRAINT valid_date_range CHECK (end_date > start_date),
-            CONSTRAINT budget_within_total CHECK (budget_spent <= budget_total)
-        );
-
-        CREATE INDEX IF NOT EXISTS idx_campaigns_user ON campaigns(created_by);
-        CREATE INDEX IF NOT EXISTS idx_campaigns_status ON campaigns(status);
-        CREATE INDEX IF NOT EXISTS idx_campaigns_dates ON campaigns(start_date, end_date);
-    `);
-
-    // Create creatives table
-    await global.testPool.query(`
-        CREATE TABLE IF NOT EXISTS creatives (
-            id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-            campaign_id UUID NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
-            name VARCHAR(255) NOT NULL,
-            video_url TEXT NOT NULL,
-            duration INTEGER CHECK (duration > 0),
-            file_size BIGINT CHECK (file_size > 0),
-            width INTEGER CHECK (width > 0),
-            height INTEGER CHECK (height > 0),
-            format VARCHAR(10) NOT NULL,
-            status VARCHAR(20) DEFAULT 'processing' CHECK (status IN ('processing', 'active', 'inactive', 'failed')),
-            uploaded_by UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-            created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-            updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-        );
-
-        CREATE INDEX IF NOT EXISTS idx_creatives_campaign ON creatives(campaign_id);
-        CREATE INDEX IF NOT EXISTS idx_creatives_user ON creatives(uploaded_by);
-        CREATE INDEX IF NOT EXISTS idx_creatives_status ON creatives(status);
-    `);
-
-    // Create ad tracking tables
-    await global.testPool.query(`
-        CREATE TABLE IF NOT EXISTS ad_impressions (
-            id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-            creative_id UUID NOT NULL REFERENCES creatives(id) ON DELETE CASCADE,
-            campaign_id UUID NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
-            device_type VARCHAR(50),
-            location_country VARCHAR(3),
-            location_region VARCHAR(100),
-            timestamp TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-            user_agent TEXT,
-            ip_address INET,
-            session_id VARCHAR(255)
-        );
-
-        CREATE TABLE IF NOT EXISTS ad_clicks (
-            id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-            impression_id UUID REFERENCES ad_impressions(id) ON DELETE SET NULL,
-            creative_id UUID NOT NULL REFERENCES creatives(id) ON DELETE CASCADE,
-            campaign_id UUID NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
-            timestamp TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-            click_position JSONB
-        );
-
-        CREATE TABLE IF NOT EXISTS ad_completions (
-            id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-            impression_id UUID REFERENCES ad_impressions(id) ON DELETE SET NULL,
-            creative_id UUID NOT NULL REFERENCES creatives(id) ON DELETE CASCADE,
-            campaign_id UUID NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
-            completion_percentage INTEGER CHECK (completion_percentage >= 0 AND completion_percentage <= 100),
-            timestamp TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-        );
-
-        CREATE INDEX IF NOT EXISTS idx_impressions_campaign ON ad_impressions(campaign_id);
-        CREATE INDEX IF NOT EXISTS idx_impressions_creative ON ad_impressions(creative_id);
-        CREATE INDEX IF NOT EXISTS idx_impressions_timestamp ON ad_impressions(timestamp);
-        CREATE INDEX IF NOT EXISTS idx_clicks_campaign ON ad_clicks(campaign_id);
-        CREATE INDEX IF NOT EXISTS idx_clicks_creative ON ad_clicks(creative_id);
-        CREATE INDEX IF NOT EXISTS idx_completions_campaign ON ad_completions(campaign_id);
-        CREATE INDEX IF NOT EXISTS idx_completions_creative ON ad_completions(creative_id);
-    `);
-
-    // Create campaign daily stats table for aggregated metrics
-    await global.testPool.query(`
-        CREATE TABLE IF NOT EXISTS campaign_daily_stats (
-            id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-            campaign_id UUID NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
-            date DATE NOT NULL,
-            impressions_count INTEGER DEFAULT 0,
-            clicks_count INTEGER DEFAULT 0,
-            completions_count INTEGER DEFAULT 0,
-            spend_amount DECIMAL(12, 2) DEFAULT 0.00,
-            created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-            updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-            UNIQUE(campaign_id, date)
-        );
-
-        CREATE INDEX IF NOT EXISTS idx_campaign_daily_stats_campaign_date ON campaign_daily_stats(campaign_id, date);
-    `);
-}
 
 // Test utilities
 global.testUtils = {

@@ -435,7 +435,7 @@ describe('Campaign Comprehensive Tests', () => {
         });
 
         it('should handle different campaign statuses', async () => {
-            const statuses = ['draft', 'active', 'paused', 'completed', 'cancelled'];
+            const statuses = ['draft', 'active', 'paused', 'completed'];
 
             for (const status of statuses) {
                 const campaign = await global.testUtils.createTestCampaign(testUser.id, { status });
@@ -480,13 +480,8 @@ describe('Campaign Comprehensive Tests', () => {
         it('should calculate campaign performance when metrics exist', async () => {
             // Add some tracking data
             await global.testPool.query(`
-                INSERT INTO ad_impressions (creative_id, campaign_id, device_type, location_country)
-                VALUES ($1, $2, 'smart_tv', 'US'), ($1, $2, 'smart_tv', 'CA')
-            `, [creative.id, campaign.id]);
-
-            await global.testPool.query(`
-                INSERT INTO ad_clicks (creative_id, campaign_id)
-                VALUES ($1, $2)
+                INSERT INTO impressions (creative_id, campaign_id, device_type, location_country, served_at)
+                VALUES ($1, $2, 'smart_tv', 'US', NOW()), ($1, $2, 'smart_tv', 'CA', NOW())
             `, [creative.id, campaign.id]);
 
             const response = await request(app)

@@ -278,15 +278,13 @@ class CreativeService {
                     cr.name,
                     cr.status,
                     cr.duration,
-                    COUNT(DISTINCT ai.id) as impressions_count,
-                    COUNT(DISTINCT ac.id) as completions_count,
-                    COUNT(DISTINCT acl.id) as clicks_count,
-                    ROUND(AVG(ac.completion_percentage), 2) as avg_completion_percentage
+                    COUNT(i.id) as impressions_count,
+                    COUNT(i.id) FILTER (WHERE i.completed = true) as completions_count,
+                    COUNT(i.id) FILTER (WHERE i.clicked = true) as clicks_count,
+                    ROUND(AVG(i.duration_watched), 2) as avg_duration_watched
                 FROM creatives cr
                 INNER JOIN campaigns c ON c.id = cr.campaign_id
-                LEFT JOIN ad_impressions ai ON ai.creative_id = cr.id
-                LEFT JOIN ad_completions ac ON ac.creative_id = cr.id
-                LEFT JOIN ad_clicks acl ON acl.creative_id = cr.id
+                LEFT JOIN impressions i ON i.creative_id = cr.id
                 WHERE cr.id = $1 AND c.created_by = $2
                 GROUP BY cr.id, cr.name, cr.status, cr.duration
             `;

@@ -468,13 +468,8 @@ describe('Creative Comprehensive Tests', () => {
         it('should return creative statistics', async () => {
             // Add some tracking data
             await global.testPool.query(`
-                INSERT INTO ad_impressions (creative_id, campaign_id, device_type)
-                VALUES ($1, $2, 'smart_tv'), ($1, $2, 'smart_tv')
-            `, [creative.id, testCampaign.id]);
-
-            await global.testPool.query(`
-                INSERT INTO ad_clicks (creative_id, campaign_id)
-                VALUES ($1, $2)
+                INSERT INTO impressions (creative_id, campaign_id, device_type, served_at)
+                VALUES ($1, $2, 'smart_tv', NOW()), ($1, $2, 'smart_tv', NOW())
             `, [creative.id, testCampaign.id]);
 
             const response = await request(app)
