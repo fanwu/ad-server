@@ -13,6 +13,7 @@ const authRoutes = require('./routes/auth');
 const campaignRoutes = require('./routes/campaigns');
 const creativeRoutes = require('./routes/creatives');
 const healthRoutes = require('./routes/health');
+const impressionRoutes = require('./routes/impression.routes');
 
 const app = express();
 
@@ -51,6 +52,9 @@ app.use('/health', healthRoutes);
 
 // API routes
 app.use('/api/v1/auth', authRoutes);
+
+// Impression tracking (no auth required - called by Go ad server)
+app.use('/api/v1', impressionRoutes);
 
 // Protected routes
 app.use('/api/v1/campaigns', authMiddleware, campaignRoutes);

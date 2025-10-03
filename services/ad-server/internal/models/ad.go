@@ -27,13 +27,19 @@ type AdResponse struct {
 
 // ImpressionRequest represents an impression tracking request
 type ImpressionRequest struct {
-	AdID       string    `json:"ad_id" binding:"required"`
-	CampaignID string    `json:"campaign_id" binding:"required"`
-	CreativeID string    `json:"creative_id" binding:"required"`
-	DeviceID   string    `json:"device_id" binding:"required"`
-	Timestamp  time.Time `json:"timestamp"`
-	Duration   int       `json:"duration"` // How long the ad was watched (seconds)
-	Completed  bool      `json:"completed"` // Did the user watch the full ad?
+	AdID            string    `json:"ad_id" binding:"required"`
+	CampaignID      string    `json:"campaign_id" binding:"required"`
+	CreativeID      string    `json:"creative_id" binding:"required"`
+	DeviceID        string    `json:"device_id" binding:"required"`
+	DeviceType      string    `json:"device_type"`
+	LocationCountry string    `json:"location_country"`
+	LocationRegion  string    `json:"location_region"`
+	UserAgent       string    `json:"user_agent"`
+	IPAddress       string    `json:"ip_address"`
+	SessionID       string    `json:"session_id"`
+	Timestamp       time.Time `json:"timestamp"`
+	Duration        int       `json:"duration"`  // How long the ad was watched (seconds)
+	Completed       bool      `json:"completed"` // Did the user watch the full ad?
 }
 
 // Campaign represents campaign data in Redis

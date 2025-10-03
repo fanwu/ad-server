@@ -1,9 +1,11 @@
-require('dotenv').config();
+// Load root .env file (shared config)
+require('dotenv').config({ path: require('path').join(__dirname, '../../../.env') });
 const app = require('./app');
 const logger = require('./utils/logger');
 const redis = require('./services/redisService');
 const authService = require('./services/authService');
 const redisSyncService = require('./services/redis-sync.service');
+const impressionService = require('./services/impressionService');
 
 const PORT = process.env.PORT || 3000;
 
@@ -21,6 +23,12 @@ async function startServer() {
         // Start Redis sync service
         redisSyncService.start();
 
+        // Start impression tracking service (skip in test environment)
+        if (process.env.NODE_ENV !== 'test') {
+            impressionService.start();
+            logger.info('Impression tracking service started');
+        }
+
         // Start the server
         const server = app.listen(PORT, () => {
             logger.info(`🚀 API Gateway server started`, {
@@ -34,6 +42,7 @@ async function startServer() {
                 health: `http://localhost:${PORT}/health`,
                 auth: `http://localhost:${PORT}/api/v1/auth`,
                 campaigns: `http://localhost:${PORT}/api/v1/campaigns`,
+                impressions: `http://localhost:${PORT}/api/v1/track-impression`,
                 docs: `http://localhost:${PORT}/`
             });
         });
@@ -41,6 +50,9 @@ async function startServer() {
         // Graceful shutdown
         const gracefulShutdown = async (signal) => {
             logger.info(`Received ${signal}. Starting graceful shutdown...`);
+
+            // Stop impression service first (flush remaining impressions)
+            await impressionService.stop();
 
             server.close(async () => {
                 logger.info('HTTP server closed');

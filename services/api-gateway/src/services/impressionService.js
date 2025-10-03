@@ -140,13 +140,13 @@ class ImpressionService {
       }
 
       const query = `
-        INSERT INTO ad_impressions (
+        INSERT INTO impressions (
           creative_id,
           campaign_id,
           device_type,
           location_country,
           location_region,
-          timestamp,
+          served_at,
           user_agent,
           ip_address,
           session_id
@@ -219,13 +219,13 @@ class ImpressionService {
     try {
       const query = `
         SELECT
-          DATE(timestamp) as date,
+          DATE(served_at) as date,
           COUNT(*) as impressions_count
-        FROM ad_impressions
+        FROM impressions
         WHERE campaign_id = $1
-          AND timestamp >= $2
-          AND timestamp <= $3
-        GROUP BY DATE(timestamp)
+          AND served_at >= $2
+          AND served_at <= $3
+        GROUP BY DATE(served_at)
         ORDER BY date ASC
       `;
 
@@ -245,7 +245,7 @@ class ImpressionService {
 
     try {
       const result = await client.query(
-        'SELECT COUNT(*) as total FROM ad_impressions WHERE campaign_id = $1',
+        'SELECT COUNT(*) as total FROM impressions WHERE campaign_id = $1',
         [campaignId]
       );
 

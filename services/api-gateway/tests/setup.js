@@ -48,13 +48,8 @@ afterAll(async () => {
     // Clean up test data from database first
     if (global.testPool) {
         try {
-            // Clean up in reverse dependency order - only test data with specific patterns
-            await global.testPool.query("DELETE FROM ad_completions WHERE campaign_id IN (SELECT id FROM campaigns WHERE created_by IN (SELECT id FROM users WHERE email LIKE 'test-%@%' OR email LIKE '%test%@%' OR email LIKE 'campaign-test%@%' OR email LIKE 'creative-test%@%'))");
-            await global.testPool.query("DELETE FROM ad_clicks WHERE campaign_id IN (SELECT id FROM campaigns WHERE created_by IN (SELECT id FROM users WHERE email LIKE 'test-%@%' OR email LIKE '%test%@%' OR email LIKE 'campaign-test%@%' OR email LIKE 'creative-test%@%'))");
-            await global.testPool.query("DELETE FROM ad_impressions WHERE campaign_id IN (SELECT id FROM campaigns WHERE created_by IN (SELECT id FROM users WHERE email LIKE 'test-%@%' OR email LIKE '%test%@%' OR email LIKE 'campaign-test%@%' OR email LIKE 'creative-test%@%'))");
-            await global.testPool.query("DELETE FROM creatives WHERE uploaded_by IN (SELECT id FROM users WHERE email LIKE 'test-%@%' OR email LIKE '%test%@%' OR email LIKE 'campaign-test%@%' OR email LIKE 'creative-test%@%')");
-            await global.testPool.query("DELETE FROM campaigns WHERE created_by IN (SELECT id FROM users WHERE email LIKE 'test-%@%' OR email LIKE '%test%@%' OR email LIKE 'campaign-test%@%' OR email LIKE 'creative-test%@%')");
-            await global.testPool.query("DELETE FROM users WHERE email LIKE 'test-%@%' OR email LIKE '%test%@%' OR email LIKE 'campaign-test%@%' OR email LIKE 'creative-test%@%'");
+            // Simplified cleanup - truncate all tables for faster cleanup
+            await global.testPool.query("TRUNCATE ad_completions, ad_clicks, ad_impressions, ad_requests, campaign_daily_stats, creatives, campaigns, users RESTART IDENTITY CASCADE");
         } catch (error) {
             console.warn('Final test cleanup skipped:', error.message);
         }

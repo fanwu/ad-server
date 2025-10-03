@@ -1,7 +1,12 @@
 package services
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
+	"log"
+	"net/http"
+	"os"
 	"strconv"
 	"time"
 
@@ -11,12 +16,23 @@ import (
 )
 
 type AdService struct {
-	redis *redis.Client
+	redis         *redis.Client
+	httpClient    *http.Client
+	apiGatewayURL string
 }
 
 func NewAdService(redisClient *redis.Client) *AdService {
+	apiGatewayURL := os.Getenv("API_GATEWAY_URL")
+	if apiGatewayURL == "" {
+		apiGatewayURL = "http://localhost:3000"
+	}
+
 	return &AdService{
 		redis: redisClient,
+		httpClient: &http.Client{
+			Timeout: 5 * time.Second,
+		},
+		apiGatewayURL: apiGatewayURL,
 	}
 }
 
@@ -122,14 +138,42 @@ func (s *AdService) SelectAd(req *models.AdRequest) (*models.AdResponse, error) 
 
 // TrackImpression records an impression
 func (s *AdService) TrackImpression(req *models.ImpressionRequest) error {
-	// Increment creative impression counter (async)
+	// 1. Increment Redis counters (async, fast)
 	go s.redis.IncrementCreativeImpressions(req.CreativeID)
 
-	// In a real system, we would:
-	// 1. Write to PostgreSQL asynchronously (batch writes)
-	// 2. Update budget spent
-	// 3. Update campaign/creative metrics
-	// For MVP, just the counter increment is sufficient
+	// 2. Forward to Node.js API Gateway for PostgreSQL persistence
+	impressionData := map[string]interface{}{
+		"ad_id":            req.AdID,
+		"campaign_id":      req.CampaignID,
+		"creative_id":      req.CreativeID,
+		"device_id":        req.DeviceID,
+		"device_type":      req.DeviceType,
+		"location_country": req.LocationCountry,
+		"location_region":  req.LocationRegion,
+		"user_agent":       req.UserAgent,
+		"ip_address":       req.IPAddress,
+		"session_id":       req.SessionID,
+	}
+
+	jsonData, err := json.Marshal(impressionData)
+	if err != nil {
+		return fmt.Errorf("failed to marshal impression data: %w", err)
+	}
+
+	// POST to Node.js API Gateway (fire and forget)
+	go func() {
+		url := fmt.Sprintf("%s/api/v1/track-impression", s.apiGatewayURL)
+		resp, err := s.httpClient.Post(url, "application/json", bytes.NewBuffer(jsonData))
+		if err != nil {
+			log.Printf("Failed to forward impression to API Gateway: %v", err)
+			return
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusAccepted {
+			log.Printf("API Gateway returned non-202 status: %d", resp.StatusCode)
+		}
+	}()
 
 	return nil
 }
