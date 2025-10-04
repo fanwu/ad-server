@@ -1,6 +1,7 @@
 import type { Campaign, CreateCampaignDto, UpdateCampaignStatusDto } from '@/types/campaign';
 import type { Creative, UploadCreativeDto } from '@/types/creative';
 import type { User, LoginDto, AuthResponse } from '@/types/auth';
+import type { SummaryAnalytics, CampaignAnalytics } from '@/types/analytics';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
 const TOKEN_KEY = 'auth_token';
@@ -151,5 +152,27 @@ export const creativeApi = {
     await fetchWithAuth(`${API_BASE_URL}/api/v1/creatives/${id}`, {
       method: 'DELETE',
     });
+  },
+};
+
+// Analytics API
+export const analyticsApi = {
+  getSummary: async (params?: { start_date?: string; end_date?: string }): Promise<SummaryAnalytics> => {
+    const query = new URLSearchParams();
+    if (params?.start_date) query.append('start_date', params.start_date);
+    if (params?.end_date) query.append('end_date', params.end_date);
+    const queryString = query.toString();
+    return fetchWithAuth(`${API_BASE_URL}/api/v1/analytics/summary${queryString ? `?${queryString}` : ''}`);
+  },
+
+  getCampaignAnalytics: async (
+    campaignId: string,
+    params?: { start_date?: string; end_date?: string }
+  ): Promise<CampaignAnalytics> => {
+    const query = new URLSearchParams();
+    if (params?.start_date) query.append('start_date', params.start_date);
+    if (params?.end_date) query.append('end_date', params.end_date);
+    const queryString = query.toString();
+    return fetchWithAuth(`${API_BASE_URL}/api/v1/analytics/campaigns/${campaignId}${queryString ? `?${queryString}` : ''}`);
   },
 };

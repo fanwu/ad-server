@@ -14,6 +14,7 @@ const campaignRoutes = require('./routes/campaigns');
 const creativeRoutes = require('./routes/creatives');
 const healthRoutes = require('./routes/health');
 const impressionRoutes = require('./routes/impression.routes');
+const analyticsRoutes = require('./routes/analytics');
 
 const app = express();
 
@@ -59,6 +60,7 @@ app.use('/api/v1', impressionRoutes);
 // Protected routes
 app.use('/api/v1/campaigns', authMiddleware, campaignRoutes);
 app.use('/api/v1', authMiddleware, creativeRoutes);
+app.use('/api/v1/analytics', authMiddleware, analyticsRoutes);
 
 // Root endpoint
 app.get('/', (req, res) => {
@@ -71,7 +73,8 @@ app.get('/', (req, res) => {
             health: '/health',
             auth: '/api/v1/auth',
             campaigns: '/api/v1/campaigns',
-            creatives: '/api/v1/campaigns/:id/creatives'
+            creatives: '/api/v1/campaigns/:id/creatives',
+            analytics: '/api/v1/analytics'
         }
     });
 });
