@@ -14,7 +14,9 @@ NC='\033[0m' # No Color
 
 # Project configuration
 PROJECT_NAME="CTV Ad Server"
-SERVICES=("api-gateway")  # Add more services as they're implemented
+NODE_SERVICES=("api-gateway")
+GO_SERVICES=("ad-server")
+DASHBOARD_PATH="dashboard"
 
 print_status() {
     echo -e "${BLUE}[INFO]${NC} $1"
@@ -60,6 +62,22 @@ check_prerequisites() {
         exit 1
     fi
 
+    # Check Go (if we have Go services)
+    if [ ${#GO_SERVICES[@]} -gt 0 ]; then
+        if ! command -v go &> /dev/null; then
+            print_error "Go is not installed but required for Go services"
+            exit 1
+        fi
+    fi
+
+    # Check make (if we have Go services)
+    if [ ${#GO_SERVICES[@]} -gt 0 ]; then
+        if ! command -v make &> /dev/null; then
+            print_error "make is not installed but required for Go services"
+            exit 1
+        fi
+    fi
+
     print_success "Prerequisites check passed"
 }
 
@@ -71,8 +89,8 @@ install_dependencies() {
     print_status "Installing root dependencies..."
     npm install
 
-    # Service dependencies
-    for service in "${SERVICES[@]}"; do
+    # Node.js service dependencies
+    for service in "${NODE_SERVICES[@]}"; do
         print_status "Installing dependencies for $service..."
         if [ -d "services/$service" ]; then
             (cd "services/$service" && npm install)
@@ -81,15 +99,37 @@ install_dependencies() {
         fi
     done
 
+    # Go service dependencies
+    for service in "${GO_SERVICES[@]}"; do
+        print_status "Installing dependencies for $service..."
+        if [ -d "services/$service" ]; then
+            (cd "services/$service" && make install)
+        else
+            print_warning "Service directory services/$service not found"
+        fi
+    done
+
+    # Dashboard dependencies
+    if [ -d "$DASHBOARD_PATH" ]; then
+        print_status "Installing dependencies for dashboard..."
+        (cd "$DASHBOARD_PATH" && npm install)
+
+        # Install Playwright browsers for E2E tests
+        print_status "Installing Playwright browsers..."
+        (cd "$DASHBOARD_PATH" && npx playwright install)
+    else
+        print_warning "Dashboard directory $DASHBOARD_PATH not found"
+    fi
+
     print_success "All dependencies installed"
 }
 
-# Function to run tests for a specific service
-run_service_tests() {
+# Function to run tests for Node.js service
+run_node_service_tests() {
     local service=$1
     local test_type=${2:-"all"}
 
-    print_header "Testing $service"
+    print_header "Testing Node.js Service: $service"
 
     if [ ! -d "services/$service" ]; then
         print_error "Service directory services/$service not found"
@@ -143,6 +183,83 @@ run_service_tests() {
     return $exit_code
 }
 
+# Function to run tests for Go service
+run_go_service_tests() {
+    local service=$1
+    local test_type=${2:-"all"}
+
+    print_header "Testing Go Service: $service"
+
+    if [ ! -d "services/$service" ]; then
+        print_error "Service directory services/$service not found"
+        return 1
+    fi
+
+    cd "services/$service"
+
+    print_status "Running Go tests for $service..."
+    case $test_type in
+        "coverage")
+            make test-coverage
+            ;;
+        *)
+            make test
+            ;;
+    esac
+
+    local exit_code=$?
+    cd - > /dev/null
+
+    if [ $exit_code -eq 0 ]; then
+        print_success "$service tests passed"
+    else
+        print_error "$service tests failed"
+    fi
+
+    return $exit_code
+}
+
+# Function to run dashboard tests
+run_dashboard_tests() {
+    local test_type=${1:-"all"}
+
+    print_header "Testing Dashboard (E2E)"
+
+    if [ ! -d "$DASHBOARD_PATH" ]; then
+        print_error "Dashboard directory $DASHBOARD_PATH not found"
+        return 1
+    fi
+
+    cd "$DASHBOARD_PATH"
+
+    print_status "Running Playwright E2E tests for dashboard..."
+
+    case $test_type in
+        "coverage")
+            npm run test:e2e:coverage
+            ;;
+        *)
+            npm run test:e2e
+            ;;
+    esac
+
+    local exit_code=$?
+    cd - > /dev/null
+
+    if [ $exit_code -eq 0 ]; then
+        print_success "Dashboard tests passed"
+
+        # Show coverage report location if it exists
+        if [ -f "$DASHBOARD_PATH/playwright-report/index.html" ]; then
+            print_success "Test report generated: $DASHBOARD_PATH/playwright-report/index.html"
+        fi
+    else
+        print_error "Dashboard tests failed"
+    fi
+
+    return $exit_code
+}
+
 # Function to run tests for all services
 run_all_tests() {
     local test_type=${1:-"all"}
@@ -150,12 +267,29 @@ run_all_tests() {
 
     print_header "$PROJECT_NAME - Running All Tests"
 
-    for service in "${SERVICES[@]}"; do
-        if ! run_service_tests "$service" "$test_type"; then
+    # Run Node.js service tests
+    for service in "${NODE_SERVICES[@]}"; do
+        if ! run_node_service_tests "$service" "$test_type"; then
             failed_services+=("$service")
         fi
         echo ""
     done
+
+    # Run Go service tests
+    for service in "${GO_SERVICES[@]}"; do
+        if ! run_go_service_tests "$service" "$test_type"; then
+            failed_services+=("$service")
+        fi
+        echo ""
+    done
+
+    # Run dashboard tests
+    if [ -d "$DASHBOARD_PATH" ]; then
+        if ! run_dashboard_tests "$test_type"; then
+            failed_services+=("dashboard")
+        fi
+        echo ""
+    fi
 
     # Summary
     print_header "Test Summary"
@@ -176,7 +310,8 @@ generate_coverage() {
     local coverage_dir="coverage-project"
     mkdir -p "$coverage_dir"
 
-    for service in "${SERVICES[@]}"; do
+    # Node.js services
+    for service in "${NODE_SERVICES[@]}"; do
         print_status "Generating coverage for $service..."
 
         if [ -d "services/$service" ]; then
@@ -191,6 +326,36 @@ generate_coverage() {
         fi
     done
 
+    # Go services
+    for service in "${GO_SERVICES[@]}"; do
+        print_status "Generating coverage for $service..."
+
+        if [ -d "services/$service" ]; then
+            (cd "services/$service" && make test-coverage)
+
+            # Copy coverage reports
+            if [ -f "services/$service/coverage.html" ]; then
+                mkdir -p "$coverage_dir/$service"
+                cp "services/$service/coverage.html" "$coverage_dir/$service/"
+                cp "services/$service/coverage.out" "$coverage_dir/$service/" 2>/dev/null || true
+                print_success "Coverage report copied for $service"
+            fi
+        fi
+    done
+
+    # Dashboard (E2E test report)
+    if [ -d "$DASHBOARD_PATH" ]; then
+        print_status "Generating test report for dashboard..."
+        (cd "$DASHBOARD_PATH" && npm run test:e2e)
+
+        # Copy test reports
+        if [ -d "$DASHBOARD_PATH/playwright-report" ]; then
+            mkdir -p "$coverage_dir/dashboard"
+            cp -r "$DASHBOARD_PATH/playwright-report/"* "$coverage_dir/dashboard/" 2>/dev/null || true
+            print_success "Test report copied for dashboard"
+        fi
+    fi
+
     print_success "Project coverage reports generated in $coverage_dir/"
 }
 
@@ -202,13 +367,19 @@ run_security_audit() {
     print_status "Running security audit for root dependencies..."
     npm audit --audit-level=moderate || print_warning "Security issues found in root dependencies"
 
-    # Service level audits
-    for service in "${SERVICES[@]}"; do
+    # Node.js service level audits
+    for service in "${NODE_SERVICES[@]}"; do
         print_status "Running security audit for $service..."
         if [ -d "services/$service" ]; then
             (cd "services/$service" && npm audit --audit-level=moderate) || print_warning "Security issues found in $service"
         fi
     done
+
+    # Dashboard audit
+    if [ -d "$DASHBOARD_PATH" ]; then
+        print_status "Running security audit for dashboard..."
+        (cd "$DASHBOARD_PATH" && npm audit --audit-level=moderate) || print_warning "Security issues found in dashboard"
+    fi
 
     print_success "Security audit completed"
 }
@@ -220,11 +391,24 @@ cleanup() {
     # Remove coverage directories
     rm -rf coverage-project/
 
-    for service in "${SERVICES[@]}"; do
+    # Node.js services
+    for service in "${NODE_SERVICES[@]}"; do
         if [ -d "services/$service" ]; then
             (cd "services/$service" && npm run clean:test 2>/dev/null || true)
         fi
     done
+
+    # Go services
+    for service in "${GO_SERVICES[@]}"; do
+        if [ -d "services/$service" ]; then
+            (cd "services/$service" && make clean)
+        fi
+    done
+
+    # Dashboard
+    if [ -d "$DASHBOARD_PATH" ]; then
+        (cd "$DASHBOARD_PATH" && rm -rf test-results/ playwright-report/ 2>/dev/null || true)
+    fi
 
     print_success "Cleanup completed"
 }
@@ -263,7 +447,18 @@ main() {
             local service_name=$test_type
             local service_test_type=${3:-"all"}
             check_prerequisites
-            run_service_tests "$service_name" "$service_test_type"
+
+            # Determine service type and run appropriate tests
+            if [[ " ${NODE_SERVICES[@]} " =~ " ${service_name} " ]]; then
+                run_node_service_tests "$service_name" "$service_test_type"
+            elif [[ " ${GO_SERVICES[@]} " =~ " ${service_name} " ]]; then
+                run_go_service_tests "$service_name" "$service_test_type"
+            elif [ "$service_name" = "dashboard" ]; then
+                run_dashboard_tests "$service_test_type"
+            else
+                print_error "Unknown service: $service_name"
+                exit 1
+            fi
             ;;
         *)
             print_error "Unknown command: $command"
@@ -280,32 +475,42 @@ show_help() {
     echo "Usage: $0 [command] [options]"
     echo ""
     echo "Commands:"
-    echo "  install        Install dependencies for all services"
-    echo "  test [type]    Run tests for all services"
+    echo "  install        Install dependencies for all services (Node.js, Go, and Playwright browsers)"
+    echo "  test [type]    Run tests for all services (api-gateway + ad-server + dashboard)"
     echo "  coverage       Generate coverage reports for all services"
-    echo "  audit          Run security audit for all services"
-    echo "  clean          Clean up test artifacts"
-    echo "  service <name> [type]  Run tests for specific service"
+    echo "  audit          Run security audit for all Node.js services"
+    echo "  clean          Clean up test artifacts and coverage reports"
+    echo "  service <name> [type]  Run tests for specific service only"
     echo ""
     echo "Test Types:"
     echo "  all           Run all tests (default)"
-    echo "  unit          Run unit tests only"
-    echo "  integration   Run integration tests only"
-    echo "  security      Run security tests only"
+    echo "  unit          Run unit tests only (Node.js services)"
+    echo "  integration   Run integration tests only (Node.js services)"
+    echo "  coverage      Run tests with coverage report"
     echo ""
     echo "Examples:"
-    echo "  $0 install           # Install all dependencies"
-    echo "  $0 test              # Run all tests for all services"
-    echo "  $0 test unit         # Run unit tests for all services"
-    echo "  $0 coverage          # Generate coverage reports"
-    echo "  $0 service api-gateway unit  # Run unit tests for API Gateway only"
-    echo "  $0 audit             # Run security audit"
-    echo "  $0 clean             # Clean up test artifacts"
+    echo "  $0 install                      # Install all dependencies (npm + Go + Playwright)"
+    echo "  $0 test                         # Run all tests (api-gateway + ad-server + dashboard)"
+    echo "  $0 test unit                    # Run unit tests for Node.js services"
+    echo "  $0 coverage                     # Generate coverage reports for all services"
+    echo "  $0 service api-gateway          # Run tests for API Gateway only"
+    echo "  $0 service ad-server            # Run tests for Go ad server only"
+    echo "  $0 service dashboard            # Run E2E tests for dashboard only"
+    echo "  $0 service api-gateway coverage # Run API Gateway tests with coverage"
+    echo "  $0 audit                        # Run security audit on Node.js dependencies"
+    echo "  $0 clean                        # Clean up all test artifacts"
     echo ""
-    echo "Services:"
-    for service in "${SERVICES[@]}"; do
-        echo "  - $service"
+    echo "Available Services:"
+    echo "  Node.js Services:"
+    for service in "${NODE_SERVICES[@]}"; do
+        echo "    - $service (npm test)"
     done
+    echo "  Go Services:"
+    for service in "${GO_SERVICES[@]}"; do
+        echo "    - $service (make test)"
+    done
+    echo "  Dashboard:"
+    echo "    - dashboard (Playwright E2E tests)"
 }
 
 # Check for help flag

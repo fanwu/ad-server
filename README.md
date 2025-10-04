@@ -6,35 +6,119 @@ A scalable Connected TV (CTV) advertising platform designed to handle real-time 
 
 ### Prerequisites
 - **Node.js** 18+
+- **Go** 1.21+
 - **Docker** and Docker Compose
 - **Git**
 
-### Setup & Run
+### One-Time Setup
 ```bash
 # 1. Clone the repository
 git clone <repository-url>
 cd ad-server
 
-# 2. Run automated setup (installs dependencies, starts services, runs migrations)
+# 2. Run automated setup (installs dependencies, starts infrastructure, runs migrations)
 npm run setup
+```
 
-# 3. Start the API Gateway
+This command will:
+- Install all Node.js and Go dependencies
+- Start Docker services (PostgreSQL, Redis, LocalStack, etc.)
+- Run database migrations
+- Seed development data
+- Initialize S3 buckets in LocalStack
+
+### Starting Services
+
+**Option 1: Start Infrastructure Only (Recommended for development)**
+```bash
+# Start infrastructure services (PostgreSQL, Redis, etc.)
+docker-compose -f docker-compose.dev.yml up -d
+
+# In separate terminals, start each application service:
+
+# Terminal 1: API Gateway
+cd services/api-gateway
+npm run dev
+
+# Terminal 2: Dashboard
+cd dashboard
+npm run dev
+
+# Terminal 3: Go Ad Server
+cd services/ad-server
+PORT=8888 make run
+# Or: PORT=8888 go run cmd/server/main.go
+
+# Terminal 4: Redis Sync Service (optional, runs every 5 minutes automatically)
+cd services/redis-sync
 npm run dev
 ```
 
-The API Gateway will be available at: **http://localhost:3000**
+**Option 2: Quick Start (Infrastructure + API Gateway)**
+```bash
+# Starts infrastructure and API Gateway only
+npm run dev
+```
 
-## 📋 Available Services
+**Option 3: Start Everything with Docker Compose**
+```bash
+# Start all infrastructure services
+docker-compose -f docker-compose.dev.yml up -d
 
-| Service | URL | Description |
-|---------|-----|-------------|
-| API Gateway | http://localhost:3000 | Main API endpoints |
-| Health Check | http://localhost:3000/health | System health status |
-| pgAdmin | http://localhost:8080 | Database management UI |
-| RedisInsight | http://localhost:8081 | Redis management UI |
-| PostgreSQL | localhost:5432 | Database (user: adserver, db: adserver_dev) |
-| Redis | localhost:6379 | Cache and session store |
-| LocalStack | http://localhost:4566 | AWS services simulation |
+# Then manually start application services as needed (see Option 1)
+```
+
+### Available Services
+
+| Service | URL | Port | Started By | Description |
+|---------|-----|------|------------|-------------|
+| **Application Services** |
+| Dashboard | http://localhost:3001 | 3001 | Manual | Campaign management UI (Next.js) |
+| API Gateway | http://localhost:3000 | 3000 | `npm run dev` | REST API endpoints (Node.js) |
+| Ad Server | http://localhost:8888 | 8888* | Manual | Real-time ad serving (Go) |
+| Redis Sync | - | - | Manual | PostgreSQL→Redis sync service |
+| **Infrastructure Services** |
+| PostgreSQL | localhost:5432 | 5432 | Docker | Database (user: adserver, db: adserver_dev) |
+| Redis | localhost:6379 | 6379 | Docker | Cache and session store |
+| LocalStack | http://localhost:4566 | 4566 | Docker | AWS services simulation (S3) |
+| pgAdmin | http://localhost:8080 | 8080 | Docker | Database management UI |
+| RedisInsight | http://localhost:8081 | 8081 | Docker | Redis management UI |
+
+*Go Ad Server port is configurable via `PORT` environment variable (default: 8080, recommended: 8888 to avoid conflict with pgAdmin)
+
+### Service Health Checks
+```bash
+# API Gateway
+curl http://localhost:3000/health
+
+# Ad Server (Go)
+curl http://localhost:8888/health
+
+# Dashboard
+curl http://localhost:3001
+```
+
+### Test Environment Services
+
+For running tests, a separate test infrastructure is available:
+
+```bash
+# Start test infrastructure
+docker-compose -f docker-compose.test.yml up -d
+
+# Test services run on different ports to avoid conflicts:
+# - PostgreSQL Test: localhost:5433
+# - Redis Test: localhost:6380
+# - LocalStack Test: localhost:4567
+
+# Run all tests
+./scripts/test-all.sh test
+
+# Stop test infrastructure
+docker-compose -f docker-compose.test.yml down
+```
+
+**Note:** Tests automatically use the test infrastructure. No need to manually switch configurations.
 
 ## 🧪 Test Accounts
 
@@ -43,6 +127,68 @@ All test accounts use password: `password123`
 - **admin@adserver.dev** (admin role)
 - **advertiser@adserver.dev** (advertiser role)
 - **viewer@adserver.dev** (viewer role)
+
+## 🏗️ System Architecture
+
+### Current Implementation (MVP Complete)
+```
+┌──────────────────────────────────────────────────────────┐
+│                     Client Layer                          │
+│  ┌──────────────┐          ┌──────────────────┐         │
+│  │  Dashboard   │          │   CTV Devices    │         │
+│  │ (Next.js UI) │          │  (Ad Requests)   │         │
+│  └──────────────┘          └──────────────────┘         │
+└──────────┬────────────────────────┬─────────────────────┘
+           │                        │
+           ▼                        ▼
+    ┌─────────────┐          ┌─────────────┐
+    │ API Gateway │          │  Ad Server  │
+    │  (Node.js)  │◄────────►│    (Go)     │
+    │  Port 3000  │          │  Port 8888  │
+    └─────────────┘          └─────────────┘
+           │                        │
+    ┌──────┴────────┐        ┌──────┴───────┐
+    ▼               ▼        ▼              ▼
+┌──────────┐  ┌─────────┐ ┌──────┐    ┌──────┐
+│PostgreSQL│  │  Redis  │ │Redis │    │  S3  │
+│Campaigns │  │Sessions │ │Cache │    │Video │
+│Creatives │  │ Tokens  │ │AdData│    │Files │
+│Users     │  │         │ │      │    │      │
+└──────────┘  └─────────┘ └──────┘    └──────┘
+```
+
+### Key Features
+
+#### ✅ API Gateway (Node.js)
+- JWT authentication and authorization
+- Campaign CRUD operations
+- Creative upload to S3 (LocalStack)
+- User management
+- PostgreSQL data persistence
+- Redis session management
+- Rate limiting and security headers
+- >97% test coverage (220+ tests)
+
+#### ✅ Ad Server (Go)
+- High-performance ad serving (<5ms response)
+- Real-time campaign eligibility checks
+- Creative selection from Redis cache
+- Impression tracking
+- Budget and date validation
+- 13 integration tests with real Redis
+
+#### ✅ Dashboard (Next.js 15)
+- Campaign management interface
+- Creative upload with drag-and-drop
+- Form validation with Zod
+- Real-time API integration
+- 20 E2E tests with Playwright
+
+#### ✅ Redis Sync Service (Node.js)
+- Syncs PostgreSQL campaigns to Redis
+- Keeps ad server cache hot
+- Runs every 5 minutes
+- Automatic on campaign changes
 
 ## 📖 API Documentation
 
@@ -69,13 +215,21 @@ curl -X POST http://localhost:3000/api/v1/auth/login \
   }'
 ```
 
-#### Get Profile (Protected)
-```bash
-curl -X GET http://localhost:3000/api/v1/auth/profile \
-  -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
-```
+### Campaign Endpoints
 
-### Campaign Endpoints (Mock Data)
+#### Create Campaign
+```bash
+curl -X POST http://localhost:3000/api/v1/campaigns \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Summer Sale Campaign",
+    "description": "Q3 promotional campaign",
+    "budget_total": 10000,
+    "start_date": "2025-07-01",
+    "end_date": "2025-09-30"
+  }'
+```
 
 #### List Campaigns
 ```bash
@@ -83,52 +237,48 @@ curl -X GET http://localhost:3000/api/v1/campaigns \
   -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
 ```
 
-#### Get Campaign Details
+#### Get Campaign Stats
 ```bash
-curl -X GET http://localhost:3000/api/v1/campaigns/campaign-id \
+curl -X GET http://localhost:3000/api/v1/campaigns/{id}/stats \
   -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
 ```
 
-## 🏗️ Architecture
+### Creative Endpoints
 
-### Current Implementation (Step 1)
-```
-┌─────────────────┐
-│   Client Apps   │
-└─────────────────┘
-         │
-         ▼
-┌─────────────────┐
-│   API Gateway   │
-│   (Port 3000)   │
-│                 │
-│ • Authentication│
-│ • Rate Limiting │
-│ • Request Log   │
-│ • Validation    │
-└─────────────────┘
-         │
-    ┌────┴────┐
-    ▼         ▼
-┌─────────┐ ┌─────────┐
-│PostgreSQL│ │  Redis  │
-│ Users    │ │ Sessions│
-│ (5432)   │ │ (6379)  │
-└─────────┘ └─────────┘
+#### Upload Creative
+```bash
+curl -X POST http://localhost:3000/api/v1/campaigns/{id}/creatives \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
+  -F "name=Summer Ad 30s" \
+  -F "file=@video.mp4"
 ```
 
-### Planned Full Architecture
+### Ad Serving Endpoints (Go Server)
+
+#### Request Ad
+```bash
+curl -X POST http://localhost:8888/api/v1/ad-request \
+  -H "Content-Type: application/json" \
+  -d '{
+    "device_id": "roku-device-123",
+    "device_type": "ctv",
+    "app_id": "streaming-app-456"
+  }'
 ```
-Internet → ALB → EKS Cluster
-                 ├── API Gateway
-                 ├── Campaign Service
-                 ├── Ad Decision Engine
-                 └── Tracking Service
-                      │
-        ┌─────────────┼─────────────┐
-        ▼             ▼             ▼
-   PostgreSQL      Redis        ClickHouse
-   (Campaigns)   (Caching)     (Analytics)
+
+#### Track Impression
+```bash
+curl -X POST http://localhost:8888/api/v1/impression \
+  -H "Content-Type: application/json" \
+  -d '{
+    "ad_id": "ad-uuid",
+    "campaign_id": "campaign-uuid",
+    "creative_id": "creative-uuid",
+    "device_id": "roku-device-123",
+    "device_type": "ctv",
+    "completed": true,
+    "duration": 30
+  }'
 ```
 
 ## 🛠️ Development Commands
@@ -136,7 +286,7 @@ Internet → ALB → EKS Cluster
 ```bash
 # Environment Management
 npm run setup          # Complete development environment setup
-npm run dev            # Start API Gateway with hot reload
+npm run dev            # Start all services (Dashboard + API + Go server)
 npm run clean          # Stop and remove all containers
 
 # Database Operations
@@ -144,16 +294,38 @@ npm run db:migrate     # Run pending database migrations
 npm run db:seed        # Seed development data
 npm run db:reset       # Reset database (drop, create, migrate, seed)
 
-# Testing (when implemented)
-npm test               # Run all tests
-npm run test:unit      # Run unit tests only
-npm run test:integration  # Run integration tests
-npm run test:load      # Run load tests with k6
+# Testing
+./scripts/test-all.sh test              # Run all tests (all services)
+./scripts/test-all.sh service api-gateway  # Test specific service
+./scripts/test-all.sh service ad-server    # Test Go ad server
+./scripts/test-all.sh service dashboard    # Test dashboard E2E
+./scripts/test-all.sh coverage          # Generate coverage reports
+
+# Individual Service Tests
+cd services/api-gateway && npm test     # API Gateway tests
+cd services/ad-server && make test      # Go ad server tests
+cd dashboard && npm run test:e2e        # Dashboard E2E tests
 
 # Code Quality
 npm run lint           # Check code style with ESLint
 npm run lint:fix       # Auto-fix code style issues
 ```
+
+## 🧪 Testing
+
+### Test Coverage Summary
+- **Total Tests**: 250+ across all services
+- **API Gateway**: 220+ tests, >97% coverage (Jest)
+- **Ad Server (Go)**: 13 integration tests (real Redis)
+- **Dashboard**: 20 E2E tests (Playwright)
+
+### Test Philosophy
+- ✅ **Real dependencies** - No mocks for integration tests
+- ✅ **Isolated test environment** - Separate Redis/PostgreSQL on different ports
+- ✅ **Comprehensive coverage** - Unit, integration, E2E, security tests
+- ✅ **CI/CD ready** - GitHub Actions pipeline
+
+For detailed testing information, see [TESTING.md](TESTING.md)
 
 ## 🔒 Security Features
 
@@ -161,93 +333,172 @@ npm run lint:fix       # Auto-fix code style issues
 - **Password Security** with bcrypt hashing (12 rounds)
 - **Token Blacklisting** using Redis for logout/refresh
 - **Rate Limiting** (100 requests per 15 minutes per IP)
-- **Input Validation** with Joi schemas
+- **Input Validation** with Joi/Zod schemas
 - **Security Headers** via Helmet.js
 - **CORS Configuration** for cross-origin requests
+- **File Upload Validation** (type, size limits)
+- **SQL Injection Protection** via parameterized queries
 
 ## 📊 Current Features
 
-### ✅ Implemented
-- **User Authentication** (register, login, logout, refresh)
-- **Role-based Access Control** (admin, advertiser, viewer)
-- **API Gateway** with middleware pipeline
-- **Health Monitoring** with dependency checks
-- **Request Logging** with unique request IDs
-- **Database Migrations** with PostgreSQL
-- **Development Environment** with Docker Compose
+### ✅ Implemented (MVP Complete)
 
-### 🚧 In Development
-- Campaign management (CRUD operations)
-- Creative upload and validation
-- Targeting rule configuration
-- Comprehensive testing suite
+#### Campaign Management
+- Full CRUD operations for campaigns
+- Budget tracking and management
+- Date range validation
+- Status management (active, paused, completed)
+- Real-time sync to Redis cache
 
-### 📋 Planned (Future Phases)
-- Ad decision engine with real-time selection
+#### Creative Management
+- Video creative upload to S3
+- File validation (MP4, MOV, 100MB max)
+- Metadata extraction (duration, format)
+- Association with campaigns
+- S3 storage via LocalStack
+
+#### Ad Serving
+- Real-time ad selection (<5ms)
+- Campaign eligibility filtering (dates, budget, status)
+- Creative rotation
+- Impression tracking
+- Redis-based caching
+
+#### User Management
+- User registration and authentication
+- Role-based access control (admin, advertiser, viewer)
+- JWT token management
+- Profile management
+
+#### Dashboard UI
+- Campaign creation and management
+- Creative upload interface
+- Drag-and-drop file upload
+- Form validation
+- Real-time data updates
+
+#### Analytics & Tracking
+- Impression tracking
+- Campaign statistics
+- Daily aggregation
+- Budget spend tracking
+
+#### Infrastructure
+- Docker Compose development environment
+- Database migrations (knex.js)
+- Redis caching layer
+- S3 integration (LocalStack)
+- Health monitoring
+- Request logging
+
+### 📋 Planned Features (Future Phases)
+
+#### Phase 2 - Analytics Dashboard
+- Real-time campaign performance metrics
+- Impression/click visualization
+- Budget utilization charts
+- Date range filtering
+- Creative performance breakdown
+
+#### Phase 3 - AWS Deployment
+- ECS/EKS deployment
+- RDS for PostgreSQL
+- ElastiCache for Redis
+- S3 for video storage
+- CloudFront CDN
+- Application Load Balancer
+- Auto-scaling policies
+
+#### Phase 4 - Advanced Features
 - VAST 4.x tag generation
-- Frequency capping and competitive separation
-- Analytics and reporting dashboard
-- AWS cloud deployment
-- Load balancing and auto-scaling
+- Frequency capping
+- Competitive separation
+- Audience targeting
+- A/B testing framework
+- Real-time bidding support
 
 ## 🐳 Docker Services
 
-The development environment includes:
+### Development Environment (docker-compose.dev.yml)
+- **PostgreSQL 15** - Primary database
+- **Redis 7** - Session store and cache
+- **pgAdmin 4** - Database management
+- **RedisInsight** - Redis monitoring
+- **LocalStack** - AWS S3 simulation
 
-- **PostgreSQL 15** - Primary database with UUID support
-- **Redis 7** - Session store and caching layer
-- **pgAdmin 4** - Database management interface
-- **RedisInsight** - Redis monitoring and management
-- **LocalStack** - AWS services simulation (S3, Lambda, etc.)
-
-All services include health checks and automatic restart policies.
+### Test Environment (docker-compose.test.yml)
+- **PostgreSQL Test** (port 5433)
+- **Redis Test** (port 6380)
+- **LocalStack Test** (port 4567)
 
 ## 📁 Project Structure
 
 ```
 ad-server/
 ├── services/
-│   └── api-gateway/           # Express.js API Gateway
-│       ├── src/
-│       │   ├── middleware/    # Auth, validation, logging
-│       │   ├── routes/        # API route handlers
-│       │   ├── services/      # Business logic services
-│       │   └── utils/         # Utility functions
-│       └── tests/             # Service-specific tests
+│   ├── api-gateway/              # Node.js REST API
+│   │   ├── src/
+│   │   │   ├── middleware/       # Auth, validation, logging
+│   │   │   ├── routes/           # API endpoints
+│   │   │   ├── services/         # Business logic
+│   │   │   └── utils/            # Utilities
+│   │   └── tests/                # 220+ tests
+│   ├── ad-server/                # Go ad serving engine
+│   │   ├── cmd/server/           # Main entry point
+│   │   ├── internal/
+│   │   │   ├── handlers/         # HTTP handlers
+│   │   │   ├── services/         # Ad selection logic
+│   │   │   ├── models/           # Data models
+│   │   │   └── redis/            # Redis client
+│   │   └── Makefile              # Build commands
+│   └── redis-sync/               # PostgreSQL → Redis sync
+├── dashboard/                     # Next.js 15 admin UI
+│   ├── app/                      # App router pages
+│   ├── components/               # React components
+│   └── tests/e2e/                # Playwright tests
 ├── shared/
-│   └── database/              # Database schemas and migrations
-├── infrastructure/            # Terraform and K8s configs (planned)
-├── tools/
-│   └── scripts/               # Development and deployment scripts
-└── docs/                      # Project documentation
+│   └── database/
+│       ├── migrations/           # Database migrations
+│       └── seeds/                # Seed data
+├── scripts/                      # Automation scripts
+│   ├── test-all.sh              # Run all tests
+│   ├── test-docker.sh           # Docker test runner
+│   └── dev.sh                   # Development startup
+└── docs/                         # Documentation
 ```
 
 ## 🔍 Monitoring & Debugging
 
-### Health Check
+### Health Checks
 ```bash
+# API Gateway health
 curl http://localhost:3000/health
+
+# Ad Server health
+curl http://localhost:8080/health
 ```
 
-Returns system status including:
-- Overall service health
-- PostgreSQL connection status
-- Redis connection status
-- Response latencies
-
 ### Logs
-- **API Gateway logs**: Structured JSON logs with Winston
-- **Database logs**: Available via pgAdmin
-- **Redis logs**: Available via RedisInsight
-- **Container logs**: `docker-compose logs -f [service]`
+```bash
+# All services
+docker-compose -f docker-compose.dev.yml logs -f
+
+# Specific service
+docker-compose -f docker-compose.dev.yml logs -f api-gateway
+docker-compose -f docker-compose.dev.yml logs -f ad-server
+docker-compose -f docker-compose.dev.yml logs -f redis-sync
+```
 
 ### Database Access
 ```bash
-# Connect to PostgreSQL
+# PostgreSQL CLI
 docker-compose -f docker-compose.dev.yml exec postgres psql -U adserver -d adserver_dev
 
-# Connect to Redis
+# Redis CLI
 docker-compose -f docker-compose.dev.yml exec redis redis-cli
+
+# View campaigns in Redis
+docker-compose -f docker-compose.dev.yml exec redis redis-cli ZRANGE active_campaigns 0 -1
 ```
 
 ## 🚨 Troubleshooting
@@ -262,52 +513,64 @@ docker-compose -f docker-compose.dev.yml exec redis redis-cli
 
 2. **Database connection errors**
    ```bash
-   # Check if PostgreSQL is running
+   # Check PostgreSQL
    docker-compose -f docker-compose.dev.yml ps postgres
-
-   # View PostgreSQL logs
    docker-compose -f docker-compose.dev.yml logs postgres
    ```
 
-3. **Port conflicts**
+3. **Redis sync not working**
+   ```bash
+   # Check sync service logs
+   docker-compose -f docker-compose.dev.yml logs redis-sync
+
+   # Manually trigger sync
+   docker-compose -f docker-compose.dev.yml restart redis-sync
+   ```
+
+4. **Port conflicts**
+   - Dashboard: 3001
+   - API Gateway: 3000
+   - Ad Server: 8888 (configurable via PORT env var)
    - PostgreSQL: 5432
    - Redis: 6379
-   - API Gateway: 3000
    - pgAdmin: 8080
    - RedisInsight: 8081
    - LocalStack: 4566
 
+   **Note:** Default Ad Server port is 8080, but we use 8888 to avoid conflicts with pgAdmin
+
 ### Reset Everything
 ```bash
-npm run clean          # Stop all containers
-docker system prune    # Clean up Docker resources
-npm run setup          # Restart from scratch
+npm run clean              # Stop all containers
+docker system prune -a     # Clean up Docker resources
+npm run setup              # Restart from scratch
 ```
 
-## 📈 Performance
+## 📈 Performance Benchmarks
 
-### Current Benchmarks (Local Development)
-- **Health check**: ~5ms
-- **User registration**: ~150ms (includes bcrypt hashing)
-- **User login**: ~140ms (includes bcrypt verification)
-- **Protected routes**: ~10ms (with valid JWT)
-- **Database queries**: ~3-8ms
+### Current Performance (Local Development)
+- **Ad serving**: ~2-5ms average response time
+- **API Gateway auth**: ~150ms (includes bcrypt)
+- **Campaign queries**: ~10-20ms
+- **Health checks**: ~5ms
+- **Redis cache**: <1ms lookups
 
-### Production Targets (Phase 1 Complete)
-- **Ad serving response**: <100ms (95th percentile)
-- **API response times**: <50ms (excluding auth operations)
-- **Concurrent users**: 1000+ simultaneous connections
-- **Throughput**: 10,000+ requests/second
+### Database Stats
+- **Campaigns**: Full CRUD with indexes
+- **Creatives**: S3 URLs with metadata
+- **Impressions**: Daily aggregation
+- **Users**: Bcrypt password hashing
 
 ## 🤝 Contributing
 
 1. Fork the repository
 2. Create a feature branch: `git checkout -b feature/amazing-feature`
 3. Make your changes
-4. Run tests: `npm test`
-5. Commit: `git commit -m 'Add amazing feature'`
-6. Push: `git push origin feature/amazing-feature`
-7. Open a Pull Request
+4. Run tests: `./scripts/test-all.sh test`
+5. Ensure coverage: `./scripts/test-all.sh coverage`
+6. Commit: `git commit -m 'Add amazing feature'`
+7. Push: `git push origin feature/amazing-feature`
+8. Open a Pull Request
 
 ## 📄 License
 
@@ -315,4 +578,10 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-For detailed development progress and technical specifications, see [PROGRESS.md](PROGRESS.md) and [PHASE_1_DETAILED_PLAN.md](PHASE_1_DETAILED_PLAN.md).
+## 📚 Additional Documentation
+
+- [PROGRESS.md](PROGRESS.md) - Development progress and milestones
+- [TESTING.md](TESTING.md) - Comprehensive testing guide
+- [TECH_STACK.md](TECH_STACK.md) - Technology decisions and rationale
+
+For detailed technical specifications and architecture decisions, see the docs in each service directory.

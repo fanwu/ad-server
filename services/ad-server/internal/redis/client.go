@@ -13,7 +13,17 @@ type Client struct {
 	ctx context.Context
 }
 
-func NewClient(addr, password string) (*Client, error) {
+func NewClient(addrAndPassword ...string) (*Client, error) {
+	addr := "localhost:6379"
+	password := ""
+
+	if len(addrAndPassword) > 0 {
+		addr = addrAndPassword[0]
+	}
+	if len(addrAndPassword) > 1 {
+		password = addrAndPassword[1]
+	}
+
 	rdb := redis.NewClient(&redis.Options{
 		Addr:         addr,
 		Password:     password,
@@ -117,4 +127,71 @@ func (c *Client) IncrementCreativeImpressions(creativeID string) error {
 	// Set expiry to 25 hours to keep last 24 hours
 	c.rdb.Expire(c.ctx, key, 25*time.Hour)
 	return nil
+}
+
+// Test helper methods
+
+func (c *Client) SetCampaign(campaignID string, data map[string]interface{}) error {
+	key := fmt.Sprintf("campaign:%s", campaignID)
+
+	// Convert map[string]interface{} to map[string]string for HSET
+	stringData := make(map[string]string)
+	for k, v := range data {
+		stringData[k] = fmt.Sprintf("%v", v)
+	}
+
+	if err := c.rdb.HSet(c.ctx, key, stringData).Err(); err != nil {
+		return fmt.Errorf("failed to set campaign: %w", err)
+	}
+	return nil
+}
+
+func (c *Client) SetCreative(creativeID, campaignID string, data map[string]interface{}) error {
+	// Set creative hash
+	creativeKey := fmt.Sprintf("creative:%s", creativeID)
+	stringData := make(map[string]string)
+	for k, v := range data {
+		stringData[k] = fmt.Sprintf("%v", v)
+	}
+
+	if err := c.rdb.HSet(c.ctx, creativeKey, stringData).Err(); err != nil {
+		return fmt.Errorf("failed to set creative: %w", err)
+	}
+
+	// Add to campaign's creatives set
+	campaignCreativesKey := fmt.Sprintf("campaign:%s:creatives", campaignID)
+	if err := c.rdb.SAdd(c.ctx, campaignCreativesKey, creativeID).Err(); err != nil {
+		return fmt.Errorf("failed to add creative to campaign set: %w", err)
+	}
+
+	return nil
+}
+
+func (c *Client) AddActiveCampaign(campaignID string, score float64) error {
+	if err := c.rdb.ZAdd(c.ctx, "active_campaigns", redis.Z{
+		Score:  score,
+		Member: campaignID,
+	}).Err(); err != nil {
+		return fmt.Errorf("failed to add active campaign: %w", err)
+	}
+	return nil
+}
+
+func (c *Client) DeleteCampaign(campaignID string) error {
+	key := fmt.Sprintf("campaign:%s", campaignID)
+	return c.rdb.Del(c.ctx, key).Err()
+}
+
+func (c *Client) DeleteCreative(creativeID, campaignID string) error {
+	creativeKey := fmt.Sprintf("creative:%s", creativeID)
+	campaignCreativesKey := fmt.Sprintf("campaign:%s:creatives", campaignID)
+
+	c.rdb.Del(c.ctx, creativeKey)
+	c.rdb.SRem(c.ctx, campaignCreativesKey, creativeID)
+
+	return nil
+}
+
+func (c *Client) RemoveActiveCampaign(campaignID string) error {
+	return c.rdb.ZRem(c.ctx, "active_campaigns", campaignID).Err()
 }

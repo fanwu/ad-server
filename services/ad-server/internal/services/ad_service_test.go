@@ -1,212 +1,408 @@
 package services
 
 import (
-	"fmt"
+	"os"
 	"testing"
 	"time"
 
 	"github.com/fanwu/ad-server/internal/models"
 	"github.com/fanwu/ad-server/internal/redis"
+	"github.com/google/uuid"
 )
 
-// RedisInterface defines the methods we need from Redis client
-type RedisInterface interface {
-	GetActiveCampaigns() ([]string, error)
-	GetCampaign(id string) (map[string]string, error)
-	GetRandomCreative(campaignID string) (string, error)
-	GetCreative(id string) (map[string]string, error)
-	IncrementCampaignRequests(campaignID string) error
-	IncrementCreativeImpressions(creativeID string) error
-	Close() error
+// setupTestRedis creates a real Redis connection for testing
+func setupTestRedis(t *testing.T) *redis.Client {
+	redisURL := os.Getenv("REDIS_TEST_URL")
+	if redisURL == "" {
+		redisURL = "localhost:6380" // Test Redis on port 6380
+	}
+
+	client, err := redis.NewClient(redisURL)
+	if err != nil {
+		t.Fatalf("Failed to connect to Redis: %v", err)
+	}
+
+	return client
 }
 
-// MockRedisClient for testing
-type MockRedisClient struct {
-	campaigns          map[string]map[string]string
-	creatives          map[string]map[string]string
-	campaignCreatives  map[string][]string
-	activeCampaigns    []string
-	requestCounters    map[string]int
-	impressionCounters map[string]int
-	shouldError        bool
-	errorMessage       string
-}
+// seedTestCampaign adds a test campaign and creative to Redis
+func seedTestCampaign(t *testing.T, redisClient *redis.Client, startOffset, endOffset time.Duration, budgetTotal, budgetSpent float64) (string, string) {
+	campaignID := uuid.New().String()
+	creativeID := uuid.New().String()
 
-func NewMockRedisClient() *MockRedisClient {
-	return &MockRedisClient{
-		campaigns:          make(map[string]map[string]string),
-		creatives:          make(map[string]map[string]string),
-		campaignCreatives:  make(map[string][]string),
-		activeCampaigns:    []string{},
-		requestCounters:    make(map[string]int),
-		impressionCounters: make(map[string]int),
-	}
-}
-
-func (m *MockRedisClient) GetActiveCampaigns() ([]string, error) {
-	if m.shouldError {
-		return nil, fmt.Errorf("%s", m.errorMessage)
-	}
-	return m.activeCampaigns, nil
-}
-
-func (m *MockRedisClient) GetCampaign(id string) (map[string]string, error) {
-	if m.shouldError {
-		return nil, fmt.Errorf("%s", m.errorMessage)
-	}
-	if campaign, ok := m.campaigns[id]; ok {
-		return campaign, nil
-	}
-	return nil, fmt.Errorf("campaign not found: %s", id)
-}
-
-func (m *MockRedisClient) GetRandomCreative(campaignID string) (string, error) {
-	if m.shouldError {
-		return "", fmt.Errorf("%s", m.errorMessage)
-	}
-	creatives, ok := m.campaignCreatives[campaignID]
-	if !ok || len(creatives) == 0 {
-		return "", fmt.Errorf("failed to get random creative: no creatives found")
-	}
-	return creatives[0], nil
-}
-
-func (m *MockRedisClient) GetCreative(id string) (map[string]string, error) {
-	if m.shouldError {
-		return nil, fmt.Errorf("%s", m.errorMessage)
-	}
-	if creative, ok := m.creatives[id]; ok {
-		return creative, nil
-	}
-	return nil, fmt.Errorf("creative not found: %s", id)
-}
-
-func (m *MockRedisClient) IncrementCampaignRequests(campaignID string) error {
-	if m.shouldError {
-		return fmt.Errorf("%s", m.errorMessage)
-	}
-	m.requestCounters[campaignID]++
-	return nil
-}
-
-func (m *MockRedisClient) IncrementCreativeImpressions(creativeID string) error {
-	if m.shouldError {
-		return fmt.Errorf("%s", m.errorMessage)
-	}
-	m.impressionCounters[creativeID]++
-	return nil
-}
-
-func (m *MockRedisClient) Close() error {
-	return nil
-}
-
-// Helper to create service with mock
-func createTestService(mock *MockRedisClient) *AdService {
-	// We need to work around the type system here
-	// The AdService expects *redis.Client, but we have MockRedisClient
-	// For now, we'll modify AdService to use an interface
-	return &AdService{
-		redis: (*redis.Client)(nil), // This won't work directly
-	}
-}
-
-func TestSelectAd_Success(t *testing.T) {
-	mockRedis := NewMockRedisClient()
-
-	// Set up mock data
 	now := time.Now()
-	mockRedis.activeCampaigns = []string{"campaign-1"}
-	mockRedis.campaigns["campaign-1"] = map[string]string{
-		"id":            "campaign-1",
-		"name":          "Test Campaign",
-		"status":        "active",
-		"budget_total":  "1000.00",
-		"budget_spent":  "500.00",
-		"start_date":    now.Add(-24 * time.Hour).Format(time.RFC3339),
-		"end_date":      now.Add(24 * time.Hour).Format(time.RFC3339),
+	startDate := now.Add(startOffset).Format(time.RFC3339)
+	endDate := now.Add(endOffset).Format(time.RFC3339)
+
+	// Add campaign to Redis
+	campaignData := map[string]interface{}{
+		"id":           campaignID,
+		"name":         "Test Campaign",
+		"status":       "active",
+		"budget_total": budgetTotal,
+		"budget_spent": budgetSpent,
+		"start_date":   startDate,
+		"end_date":     endDate,
 	}
 
-	mockRedis.campaignCreatives["campaign-1"] = []string{"creative-1"}
-	mockRedis.creatives["creative-1"] = map[string]string{
-		"id":          "creative-1",
-		"campaign_id": "campaign-1",
+	if err := redisClient.SetCampaign(campaignID, campaignData); err != nil {
+		t.Fatalf("Failed to set campaign: %v", err)
+	}
+
+	// Add creative to Redis
+	creativeData := map[string]interface{}{
+		"id":          creativeID,
+		"campaign_id": campaignID,
 		"name":        "Test Creative",
-		"video_url":   "https://example.com/video.mp4",
+		"video_url":   "https://example.com/test-video.mp4",
 		"duration":    "30",
 		"format":      "mp4",
 		"status":      "active",
 	}
 
-	// Note: This test needs refactoring because AdService uses concrete type
-	// For MVP, we'll add integration tests instead
-	t.Skip("Skipping until AdService is refactored to use interface")
+	if err := redisClient.SetCreative(creativeID, campaignID, creativeData); err != nil {
+		t.Fatalf("Failed to set creative: %v", err)
+	}
+
+	// Add to active campaigns sorted set
+	remainingBudget := budgetTotal - budgetSpent
+	if err := redisClient.AddActiveCampaign(campaignID, remainingBudget); err != nil {
+		t.Fatalf("Failed to add active campaign: %v", err)
+	}
+
+	return campaignID, creativeID
 }
 
-func TestSelectAd_ExpiredCampaign(t *testing.T) {
-	t.Skip("Skipping until AdService is refactored to use interface")
+// cleanupTestData removes test data from Redis
+func cleanupTestData(t *testing.T, redisClient *redis.Client, campaignID, creativeID string) {
+	redisClient.DeleteCampaign(campaignID)
+	redisClient.DeleteCreative(creativeID, campaignID)
+	redisClient.RemoveActiveCampaign(campaignID)
 }
 
-func TestSelectAd_BudgetExceeded(t *testing.T) {
-	t.Skip("Skipping until AdService is refactored to use interface")
-}
+func TestSelectAd_Success(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
 
-func TestSelectAd_InactiveCampaign(t *testing.T) {
-	t.Skip("Skipping until AdService is refactored to use interface")
-}
+	// Setup
+	redisClient := setupTestRedis(t)
+	defer redisClient.Close()
 
-func TestTrackImpression_Success(t *testing.T) {
-	t.Skip("Skipping until AdService is refactored to use interface")
-}
+	// Create campaign: started yesterday, ends tomorrow, has budget
+	campaignID, creativeID := seedTestCampaign(t, redisClient,
+		-24*time.Hour,  // started yesterday
+		24*time.Hour,   // ends tomorrow
+		10000.0,        // total budget
+		1000.0,         // spent budget
+	)
+	defer cleanupTestData(t, redisClient, campaignID, creativeID)
 
-// Instead, let's add a validation test
-func TestAdRequestValidation(t *testing.T) {
+	service := NewAdService(redisClient)
+
+	// Create ad request
 	req := &models.AdRequest{
 		DeviceID:   "device-123",
 		DeviceType: "ctv",
 		AppID:      "app-456",
 	}
 
-	if req.DeviceID == "" {
-		t.Error("DeviceID should not be empty")
+	// Select ad
+	adResp, err := service.SelectAd(req)
+
+	// Assertions
+	if err != nil {
+		t.Fatalf("Expected no error, got: %v", err)
 	}
-	if req.DeviceType == "" {
-		t.Error("DeviceType should not be empty")
+
+	if adResp == nil {
+		t.Fatal("Expected ad response, got nil")
 	}
-	if req.AppID == "" {
-		t.Error("AppID should not be empty")
+
+	if adResp.CampaignID != campaignID {
+		t.Errorf("Expected campaign_id %s, got %s", campaignID, adResp.CampaignID)
+	}
+
+	if adResp.CreativeID != creativeID {
+		t.Errorf("Expected creative_id %s, got %s", creativeID, adResp.CreativeID)
+	}
+
+	if adResp.VideoURL != "https://example.com/test-video.mp4" {
+		t.Errorf("Expected video_url https://example.com/test-video.mp4, got %s", adResp.VideoURL)
+	}
+
+	if adResp.Duration != 30 {
+		t.Errorf("Expected duration 30, got %d", adResp.Duration)
+	}
+
+	if adResp.Format != "mp4" {
+		t.Errorf("Expected format mp4, got %s", adResp.Format)
+	}
+
+	if adResp.AdID == "" {
+		t.Error("AdID should not be empty")
 	}
 }
 
-func TestAdResponseStructure(t *testing.T) {
-	now := time.Now()
-	resp := &models.AdResponse{
-		AdID:        "ad-123",
-		CampaignID:  "campaign-1",
-		CreativeID:  "creative-1",
-		VideoURL:    "https://example.com/video.mp4",
-		Duration:    30,
-		Format:      "mp4",
-		TrackingURL: "/api/v1/impression",
-		Timestamp:   now,
+func TestSelectAd_ExpiredCampaign(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
 	}
 
-	if resp.AdID == "" {
-		t.Error("AdID should not be empty")
+	// Setup
+	redisClient := setupTestRedis(t)
+	defer redisClient.Close()
+
+	// Create campaign that ended yesterday
+	campaignID, creativeID := seedTestCampaign(t, redisClient,
+		-48*time.Hour, // started 2 days ago
+		-24*time.Hour, // ended yesterday
+		10000.0,
+		1000.0,
+	)
+	defer cleanupTestData(t, redisClient, campaignID, creativeID)
+
+	service := NewAdService(redisClient)
+
+	req := &models.AdRequest{
+		DeviceID:   "device-123",
+		DeviceType: "ctv",
+		AppID:      "app-456",
 	}
-	if resp.CampaignID == "" {
-		t.Error("CampaignID should not be empty")
+
+	// Select ad
+	adResp, err := service.SelectAd(req)
+
+	// Should return error because campaign is expired
+	if err == nil {
+		t.Error("Expected error for expired campaign, got nil")
 	}
-	if resp.CreativeID == "" {
-		t.Error("CreativeID should not be empty")
+
+	if adResp != nil {
+		t.Error("Expected nil response for expired campaign, got response")
 	}
-	if resp.VideoURL == "" {
-		t.Error("VideoURL should not be empty")
+}
+
+func TestSelectAd_FutureCampaign(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
 	}
-	if resp.Duration <= 0 {
-		t.Error("Duration should be positive")
+
+	// Setup
+	redisClient := setupTestRedis(t)
+	defer redisClient.Close()
+
+	// Create campaign that starts tomorrow
+	campaignID, creativeID := seedTestCampaign(t, redisClient,
+		24*time.Hour, // starts tomorrow
+		48*time.Hour, // ends in 2 days
+		10000.0,
+		1000.0,
+	)
+	defer cleanupTestData(t, redisClient, campaignID, creativeID)
+
+	service := NewAdService(redisClient)
+
+	req := &models.AdRequest{
+		DeviceID:   "device-123",
+		DeviceType: "ctv",
+		AppID:      "app-456",
 	}
-	if resp.TrackingURL == "" {
-		t.Error("TrackingURL should not be empty")
+
+	// Select ad
+	adResp, err := service.SelectAd(req)
+
+	// Should return error because campaign hasn't started
+	if err == nil {
+		t.Error("Expected error for future campaign, got nil")
 	}
+
+	if adResp != nil {
+		t.Error("Expected nil response for future campaign, got response")
+	}
+}
+
+func TestSelectAd_BudgetExceeded(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
+
+	// Setup
+	redisClient := setupTestRedis(t)
+	defer redisClient.Close()
+
+	// Create campaign with budget exceeded (spent >= total)
+	campaignID, creativeID := seedTestCampaign(t, redisClient,
+		-24*time.Hour,
+		24*time.Hour,
+		10000.0, // total budget
+		10000.0, // spent budget (equal to total)
+	)
+	defer cleanupTestData(t, redisClient, campaignID, creativeID)
+
+	service := NewAdService(redisClient)
+
+	req := &models.AdRequest{
+		DeviceID:   "device-123",
+		DeviceType: "ctv",
+		AppID:      "app-456",
+	}
+
+	// Select ad
+	adResp, err := service.SelectAd(req)
+
+	// Should return error because budget is exhausted
+	if err == nil {
+		t.Error("Expected error for exhausted budget, got nil")
+	}
+
+	if adResp != nil {
+		t.Error("Expected nil response for exhausted budget, got response")
+	}
+}
+
+func TestSelectAd_InactiveCampaign(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
+
+	// Setup
+	redisClient := setupTestRedis(t)
+	defer redisClient.Close()
+
+	campaignID := uuid.New().String()
+	creativeID := uuid.New().String()
+
+	now := time.Now()
+	startDate := now.Add(-24 * time.Hour).Format(time.RFC3339)
+	endDate := now.Add(24 * time.Hour).Format(time.RFC3339)
+
+	// Add inactive campaign to Redis
+	campaignData := map[string]interface{}{
+		"id":           campaignID,
+		"name":         "Inactive Test Campaign",
+		"status":       "paused", // INACTIVE
+		"budget_total": "10000.00",
+		"budget_spent": "1000.00",
+		"start_date":   startDate,
+		"end_date":     endDate,
+	}
+
+	if err := redisClient.SetCampaign(campaignID, campaignData); err != nil {
+		t.Fatalf("Failed to set campaign: %v", err)
+	}
+
+	// Add creative
+	creativeData := map[string]interface{}{
+		"id":          creativeID,
+		"campaign_id": campaignID,
+		"name":        "Test Creative",
+		"video_url":   "https://example.com/test-video.mp4",
+		"duration":    "30",
+		"format":      "mp4",
+		"status":      "active",
+	}
+
+	if err := redisClient.SetCreative(creativeID, campaignID, creativeData); err != nil {
+		t.Fatalf("Failed to set creative: %v", err)
+	}
+
+	// Add to active campaigns sorted set
+	if err := redisClient.AddActiveCampaign(campaignID, 9000.0); err != nil {
+		t.Fatalf("Failed to add active campaign: %v", err)
+	}
+
+	defer cleanupTestData(t, redisClient, campaignID, creativeID)
+
+	service := NewAdService(redisClient)
+
+	req := &models.AdRequest{
+		DeviceID:   "device-123",
+		DeviceType: "ctv",
+		AppID:      "app-456",
+	}
+
+	// Select ad
+	adResp, err := service.SelectAd(req)
+
+	// Should return error because campaign status is not active
+	if err == nil {
+		t.Error("Expected error for inactive campaign, got nil")
+	}
+
+	if adResp != nil {
+		t.Error("Expected nil response for inactive campaign, got response")
+	}
+}
+
+func TestSelectAd_NoActiveCampaigns(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
+
+	// Setup with empty Redis
+	redisClient := setupTestRedis(t)
+	defer redisClient.Close()
+
+	service := NewAdService(redisClient)
+
+	req := &models.AdRequest{
+		DeviceID:   "device-123",
+		DeviceType: "ctv",
+		AppID:      "app-456",
+	}
+
+	// Select ad
+	adResp, err := service.SelectAd(req)
+
+	// Should return error because no campaigns exist
+	if err == nil {
+		t.Error("Expected error for no campaigns, got nil")
+	}
+
+	if adResp != nil {
+		t.Error("Expected nil response for no campaigns, got response")
+	}
+}
+
+func TestTrackImpression_Success(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
+
+	// Setup
+	redisClient := setupTestRedis(t)
+	defer redisClient.Close()
+
+	campaignID, creativeID := seedTestCampaign(t, redisClient,
+		-24*time.Hour,
+		24*time.Hour,
+		10000.0,
+		1000.0,
+	)
+	defer cleanupTestData(t, redisClient, campaignID, creativeID)
+
+	service := NewAdService(redisClient)
+
+	// Create impression request
+	req := &models.ImpressionRequest{
+		AdID:       uuid.New().String(),
+		CampaignID: campaignID,
+		CreativeID: creativeID,
+		DeviceID:   "device-123",
+		DeviceType: "ctv",
+		Timestamp:  time.Now(),
+	}
+
+	// Track impression
+	err := service.TrackImpression(req)
+
+	// Should succeed
+	if err != nil {
+		t.Errorf("Expected no error, got: %v", err)
+	}
+
+	// Note: Redis counter increment happens in a goroutine,
+	// so we can't reliably test the counter value immediately
+	// The integration test just ensures the API doesn't error
 }

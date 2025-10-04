@@ -153,5 +153,8 @@ Network Trash Folder
 Temporary Items
 .apdisk
 
-# Go compiled binaries
+# Go compiled binaries and coverage
 services/ad-server/bin/
+services/ad-server/coverage.out
+services/ad-server/coverage.html
+services/ad-server/coverage/
