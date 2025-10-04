@@ -17,7 +17,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       try {
         const { user } = await authApi.getProfile();
         setUser(user);
-      } catch (error) {
+      } catch {
         router.push('/login');
       } finally {
         setLoading(false);

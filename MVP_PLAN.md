@@ -30,6 +30,7 @@
 - Simple ad request endpoint
 - Return available ads based on campaign status
 - Basic impression tracking
+- **VAST 4.0 tag generation** for video ad integration
 - **Skip**: Complex targeting, RTB, pod assembly, frequency capping
 
 #### 4. **Essential Analytics** ⭐
@@ -372,6 +373,259 @@ POST /ad-request
 
 ---
 
+## 🎬 VAST Tag Implementation (NEW)
+
+### What is VAST?
+VAST (Video Ad Serving Template) is the standard XML format for video ad serving. It allows video players to request and display video ads from ad servers.
+
+### VAST 4.0 Integration
+
+#### Backend: VAST Endpoint
+**Endpoint**: `GET /api/v1/vast?campaign_id={uuid}`
+
+**Response** (VAST 4.0 XML):
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<VAST version="4.0" xmlns="http://www.iab.com/VAST">
+  <Ad id="{campaign_id}">
+    <InLine>
+      <AdSystem>CTV Ad Server</AdSystem>
+      <AdTitle>{campaign_name}</AdTitle>
+      <Impression><![CDATA[{api_url}/api/v1/impression?creative_id={creative_id}&campaign_id={campaign_id}]]></Impression>
+      <Creatives>
+        <Creative id="{creative_id}">
+          <Linear>
+            <Duration>00:00:30</Duration>
+            <MediaFiles>
+              <MediaFile delivery="progressive" type="video/mp4" width="1920" height="1080">
+                <![CDATA[{video_url}]]>
+              </MediaFile>
+            </MediaFiles>
+            <VideoClicks>
+              <ClickThrough><![CDATA[{click_through_url}]]></ClickThrough>
+              <ClickTracking><![CDATA[{api_url}/api/v1/click?creative_id={creative_id}]]></ClickTracking>
+            </VideoClicks>
+            <TrackingEvents>
+              <Tracking event="start"><![CDATA[{api_url}/api/v1/track?event=start&creative_id={creative_id}]]></Tracking>
+              <Tracking event="firstQuartile"><![CDATA[{api_url}/api/v1/track?event=firstQuartile&creative_id={creative_id}]]></Tracking>
+              <Tracking event="midpoint"><![CDATA[{api_url}/api/v1/track?event=midpoint&creative_id={creative_id}]]></Tracking>
+              <Tracking event="thirdQuartile"><![CDATA[{api_url}/api/v1/track?event=thirdQuartile&creative_id={creative_id}]]></Tracking>
+              <Tracking event="complete"><![CDATA[{api_url}/api/v1/track?event=complete&creative_id={creative_id}]]></Tracking>
+            </TrackingEvents>
+          </Linear>
+        </Creative>
+      </Creatives>
+    </InLine>
+  </Ad>
+</VAST>
+```
+
+#### Backend Implementation (Node.js)
+**File**: `services/api-gateway/src/routes/vast.routes.ts`
+```typescript
+import { Router } from 'express';
+import { Campaign, Creative } from '../models';
+
+const router = Router();
+
+router.get('/vast', async (req, res) => {
+  const { campaign_id } = req.query;
+
+  // Get campaign and active creative
+  const campaign = await Campaign.findByPk(campaign_id as string);
+  if (!campaign || campaign.status !== 'active') {
+    return res.status(404).send('Campaign not found or not active');
+  }
+
+  const creatives = await Creative.findAll({
+    where: { campaign_id, status: 'active' }
+  });
+
+  if (creatives.length === 0) {
+    return res.status(404).send('No active creatives found');
+  }
+
+  // Select random creative
+  const creative = creatives[Math.floor(Math.random() * creatives.length)];
+
+  // Generate VAST XML
+  const vast = `<?xml version="1.0" encoding="UTF-8"?>
+<VAST version="4.0" xmlns="http://www.iab.com/VAST">
+  <Ad id="${campaign.id}">
+    <InLine>
+      <AdSystem>CTV Ad Server</AdSystem>
+      <AdTitle>${campaign.name}</AdTitle>
+      <Impression><![CDATA[${process.env.API_URL}/api/v1/impression?creative_id=${creative.id}&campaign_id=${campaign.id}]]></Impression>
+      <Creatives>
+        <Creative id="${creative.id}">
+          <Linear>
+            <Duration>${formatDuration(creative.duration)}</Duration>
+            <MediaFiles>
+              <MediaFile delivery="progressive" type="video/mp4" width="1920" height="1080">
+                <![CDATA[${creative.video_url}]]>
+              </MediaFile>
+            </MediaFiles>
+            <TrackingEvents>
+              <Tracking event="start"><![CDATA[${process.env.API_URL}/api/v1/track?event=start&creative_id=${creative.id}]]></Tracking>
+              <Tracking event="complete"><![CDATA[${process.env.API_URL}/api/v1/track?event=complete&creative_id=${creative.id}]]></Tracking>
+            </TrackingEvents>
+          </Linear>
+        </Creative>
+      </Creatives>
+    </InLine>
+  </Ad>
+</VAST>`;
+
+  res.set('Content-Type', 'application/xml');
+  res.send(vast);
+});
+
+function formatDuration(seconds: number): string {
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const secs = seconds % 60;
+  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+}
+
+export default router;
+```
+
+#### Frontend: VAST Tag Generator Component
+**File**: `dashboard/src/components/VastTagGenerator.tsx`
+```typescript
+'use client';
+
+import { useState } from 'react';
+import { Copy, Check, ExternalLink } from 'lucide-react';
+
+interface VastTagGeneratorProps {
+  campaignId: string;
+  campaignName: string;
+}
+
+export function VastTagGenerator({ campaignId, campaignName }: VastTagGeneratorProps) {
+  const [copied, setCopied] = useState(false);
+
+  const vastUrl = `${process.env.NEXT_PUBLIC_API_URL}/api/v1/vast?campaign_id=${campaignId}`;
+
+  const handleCopy = async () => {
+    await navigator.clipboard.writeText(vastUrl);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleTest = () => {
+    window.open(vastUrl, '_blank');
+  };
+
+  return (
+    <div className="bg-white rounded-lg shadow border border-gray-200 p-6">
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-xl font-semibold text-gray-900">VAST Ad Tag</h2>
+        <button
+          onClick={handleTest}
+          className="text-sm text-blue-600 hover:text-blue-700 flex items-center gap-1"
+        >
+          <ExternalLink className="w-4 h-4" />
+          Test Tag
+        </button>
+      </div>
+
+      <div className="space-y-4">
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            VAST 4.0 URL for "{campaignName}"
+          </label>
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={vastUrl}
+              readOnly
+              className="flex-1 px-4 py-2 border border-gray-300 rounded-lg bg-gray-50 font-mono text-sm text-gray-700"
+            />
+            <button
+              onClick={handleCopy}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2 min-w-[100px] justify-center"
+            >
+              {copied ? (
+                <>
+                  <Check className="w-4 h-4" />
+                  Copied!
+                </>
+              ) : (
+                <>
+                  <Copy className="w-4 h-4" />
+                  Copy
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+          <h3 className="font-semibold text-blue-900 mb-2 text-sm">Publisher Integration Instructions</h3>
+          <ol className="list-decimal list-inside space-y-2 text-sm text-blue-800">
+            <li>Copy the VAST URL above</li>
+            <li>Paste it into your video player's VAST tag configuration</li>
+            <li>The player will automatically request ads when videos play</li>
+            <li>Ad impressions and completions will be tracked automatically</li>
+          </ol>
+        </div>
+
+        <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+          <h3 className="font-semibold text-gray-900 mb-2 text-sm">Compatible Video Players</h3>
+          <ul className="text-sm text-gray-700 space-y-1">
+            <li>• Video.js (with IMA plugin)</li>
+            <li>• JW Player</li>
+            <li>• Brightcove Player</li>
+            <li>• Google IMA SDK</li>
+            <li>• Any VAST 4.0 compatible player</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  );
+}
+```
+
+#### Frontend Integration in Campaign Details
+**File**: `dashboard/src/app/(dashboard)/campaigns/[id]/page.tsx`
+```typescript
+import { VastTagGenerator } from '@/components/VastTagGenerator';
+
+// Inside the component:
+<div className="space-y-6">
+  {/* Campaign Info */}
+  <div className="bg-white rounded-lg shadow p-6">
+    {/* ... existing campaign details ... */}
+  </div>
+
+  {/* VAST Tag Generator - Only show for active campaigns */}
+  {campaign.status === 'active' && (
+    <VastTagGenerator
+      campaignId={campaign.id}
+      campaignName={campaign.name}
+    />
+  )}
+
+  {/* Creatives List */}
+  <div className="bg-white rounded-lg shadow p-6">
+    {/* ... existing creatives list ... */}
+  </div>
+</div>
+```
+
+### Testing VAST Tags
+```bash
+# Test VAST endpoint directly
+curl "http://localhost:3000/api/v1/vast?campaign_id={uuid}"
+
+# Should return valid VAST 4.0 XML
+# Validate with: https://developers.google.com/interactive-media-ads/docs/sdks/html5/vastinspector
+```
+
+---
+
 ## 📊 MVP Database Schema (Simplified)
 
 ### Core Tables Only
@@ -455,6 +709,7 @@ DELETE /api/v1/creatives/:id               // Delete creative
 // Ad Serving (MVP)
 POST   /api/v1/ad-request                  // Request ad (no targeting)
 POST   /api/v1/impression                  // Track impression
+GET    /api/v1/vast                        // VAST 4.0 XML endpoint (campaign_id param)
 
 // Basic Analytics
 GET    /api/v1/campaigns/:id/stats         // Basic campaign stats
@@ -555,6 +810,7 @@ admin-ui/
 - Campaign information display
 - Status management (activate, pause, complete)
 - Budget spent progress bar
+- **VAST Tag Generator** - Generate and copy VAST URL for publishers
 - Associated creatives list
 - Add Creative button
 - Basic performance metrics

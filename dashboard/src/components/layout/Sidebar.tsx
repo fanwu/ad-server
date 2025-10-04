@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home, Folder, BarChart3, Settings, LogOut } from 'lucide-react';
+import { Home, Folder, BarChart3, LogOut } from 'lucide-react';
 import { authApi, tokenStorage } from '@/lib/api';
 import { useRouter } from 'next/navigation';
 

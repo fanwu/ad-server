@@ -47,12 +47,12 @@ export default function EditCampaignPage() {
           start_date: startDate,
           end_date: endDate,
           pricing_model: campaign.pricing_model,
-          cpm_rate: campaign.cpm_rate,
-          cpc_rate: campaign.cpc_rate,
-          cpv_rate: campaign.cpv_rate,
+          cpm_rate: campaign.pricing_model === 'cpm' ? campaign.cpm_rate : undefined,
+          cpc_rate: campaign.pricing_model === 'cpc' ? campaign.cpc_rate : undefined,
+          cpv_rate: campaign.pricing_model === 'cpv' ? campaign.cpv_rate : undefined,
         });
-      } catch (err: any) {
-        setError(err.message || 'Failed to load campaign');
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to load campaign');
       } finally {
         setLoading(false);
       }
@@ -68,21 +68,24 @@ export default function EditCampaignPage() {
 
       // Prepare campaign data with proper pricing fields
       const campaignData = {
-        ...data,
-        budget_total: Number(data.budget_total),
+        name: data.name,
         description: data.description || undefined,
-        // Ensure only the selected pricing model's rate is sent
-        cpm_rate: data.pricing_model === 'cpm' ? data.cpm_rate : null,
-        cpc_rate: data.pricing_model === 'cpc' ? data.cpc_rate : null,
-        cpv_rate: data.pricing_model === 'cpv' ? data.cpv_rate : null,
+        budget_total: Number(data.budget_total),
+        start_date: data.start_date,
+        end_date: data.end_date,
+        pricing_model: data.pricing_model,
+        // Ensure only the selected pricing model's rate is sent, convert null to undefined
+        cpm_rate: data.pricing_model === 'cpm' ? (data.cpm_rate ?? undefined) : undefined,
+        cpc_rate: data.pricing_model === 'cpc' ? (data.cpc_rate ?? undefined) : undefined,
+        cpv_rate: data.pricing_model === 'cpv' ? (data.cpv_rate ?? undefined) : undefined,
       };
 
       await campaignApi.update(campaignId, campaignData);
 
       // Redirect to campaign details on success
-      router.push(`/campaigns/${campaignId}`);
-    } catch (err: any) {
-      setError(err.message || 'Failed to update campaign');
+      window.location.href = `/campaigns/${campaignId}`;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update campaign');
     } finally {
       setIsSubmitting(false);
     }

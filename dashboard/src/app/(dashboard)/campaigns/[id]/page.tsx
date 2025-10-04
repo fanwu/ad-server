@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { campaignApi, creativeApi } from '@/lib/api';
 import { Campaign } from '@/types/campaign';
@@ -11,7 +11,6 @@ import { format } from 'date-fns';
 
 export default function CampaignDetailsPage() {
   const params = useParams();
-  const router = useRouter();
   const campaignId = params.id as string;
 
   const [campaign, setCampaign] = useState<Campaign | null>(null);
@@ -31,8 +30,8 @@ export default function CampaignDetailsPage() {
         ]);
         setCampaign(campaignData.campaign);
         setCreatives(creativesData.creatives);
-      } catch (err: any) {
-        setError(err.message || 'Failed to fetch campaign details');
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to fetch campaign details');
       } finally {
         setLoading(false);
       }
@@ -51,8 +50,8 @@ export default function CampaignDetailsPage() {
       await creativeApi.delete(creativeId);
       // Remove from local state
       setCreatives((prev) => prev.filter((c) => c.id !== creativeId));
-    } catch (err: any) {
-      alert(err.message || 'Failed to delete creative');
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to delete creative');
     } finally {
       setDeletingCreativeId(null);
     }
@@ -63,8 +62,8 @@ export default function CampaignDetailsPage() {
       setUpdatingStatus(true);
       await campaignApi.updateStatus(campaignId, { status: newStatus });
       setCampaign((prev) => prev ? { ...prev, status: newStatus } : null);
-    } catch (err: any) {
-      alert(err.message || 'Failed to update campaign status');
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to update campaign status');
     } finally {
       setUpdatingStatus(false);
     }

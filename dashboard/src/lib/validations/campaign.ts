@@ -11,8 +11,7 @@ export const createCampaignSchema = z.object({
     .or(z.literal('')),
 
   budget_total: z.number({
-    required_error: 'Budget is required',
-    invalid_type_error: 'Budget must be a number',
+    message: 'Budget must be a number',
   })
     .positive('Budget must be greater than 0')
     .max(999999999, 'Budget is too large'),
@@ -32,26 +31,12 @@ export const createCampaignSchema = z.object({
     .min(1, 'End date is required'),
 
   pricing_model: z.enum(['cpm', 'cpc', 'cpv', 'flat'], {
-    required_error: 'Pricing model is required',
+    message: 'Pricing model is required',
   }),
 
-  cpm_rate: z.number()
-    .positive('CPM rate must be greater than 0')
-    .max(1000, 'CPM rate cannot exceed $1,000')
-    .optional()
-    .nullable(),
-
-  cpc_rate: z.number()
-    .positive('CPC rate must be greater than 0')
-    .max(100, 'CPC rate cannot exceed $100')
-    .optional()
-    .nullable(),
-
-  cpv_rate: z.number()
-    .positive('CPV rate must be greater than 0')
-    .max(100, 'CPV rate cannot exceed $100')
-    .optional()
-    .nullable(),
+  cpm_rate: z.number().optional().or(z.nan()),
+  cpc_rate: z.number().optional().or(z.nan()),
+  cpv_rate: z.number().optional().or(z.nan()),
 }).refine((data) => {
   const startDate = new Date(data.start_date);
   const endDate = new Date(data.end_date);
@@ -61,19 +46,33 @@ export const createCampaignSchema = z.object({
   path: ['end_date'],
 }).refine((data) => {
   // Validate that the appropriate rate is set for the pricing model
-  if (data.pricing_model === 'cpm' && (!data.cpm_rate || data.cpm_rate <= 0)) {
-    return false;
+  if (data.pricing_model === 'cpm') {
+    return data.cpm_rate !== undefined && !isNaN(data.cpm_rate) && data.cpm_rate > 0 && data.cpm_rate <= 1000;
   }
-  if (data.pricing_model === 'cpc' && (!data.cpc_rate || data.cpc_rate <= 0)) {
-    return false;
+  if (data.pricing_model === 'cpc') {
+    return data.cpc_rate !== undefined && !isNaN(data.cpc_rate) && data.cpc_rate > 0 && data.cpc_rate <= 100;
   }
-  if (data.pricing_model === 'cpv' && (!data.cpv_rate || data.cpv_rate <= 0)) {
-    return false;
+  if (data.pricing_model === 'cpv') {
+    return data.cpv_rate !== undefined && !isNaN(data.cpv_rate) && data.cpv_rate > 0 && data.cpv_rate <= 100;
   }
   return true;
-}, {
-  message: 'Please enter a rate for the selected pricing model',
-  path: ['cpm_rate'], // Will show on whichever field is relevant
+}, (data) => {
+  // Dynamic error message and path based on pricing model
+  let message = 'Please enter a valid rate';
+  let path: ('cpm_rate' | 'cpc_rate' | 'cpv_rate')[] = ['cpm_rate'];
+
+  if (data.pricing_model === 'cpm') {
+    message = 'CPM rate must be between $0.01 and $1,000';
+    path = ['cpm_rate'];
+  } else if (data.pricing_model === 'cpc') {
+    message = 'CPC rate must be between $0.01 and $100';
+    path = ['cpc_rate'];
+  } else if (data.pricing_model === 'cpv') {
+    message = 'CPV rate must be between $0.01 and $100';
+    path = ['cpv_rate'];
+  }
+
+  return { message, path };
 });
 
 export type CreateCampaignFormData = z.infer<typeof createCampaignSchema>;

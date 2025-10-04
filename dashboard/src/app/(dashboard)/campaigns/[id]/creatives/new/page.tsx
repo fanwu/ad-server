@@ -117,8 +117,8 @@ export default function UploadCreativePage() {
       setTimeout(() => {
         router.push(`/campaigns/${campaignId}`);
       }, 500);
-    } catch (err: any) {
-      setError(err.message || 'Failed to upload creative');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to upload creative');
       setUploadProgress(0);
     } finally {
       setIsUploading(false);

@@ -23,8 +23,8 @@ export default function LoginPage() {
       console.log('[Login] Token stored, navigating to home');
       router.push('/');
       router.refresh();
-    } catch (err: any) {
-      setError(err.message || 'Login failed. Please check your credentials.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Login failed. Please check your credentials.');
     } finally {
       setLoading(false);
     }

@@ -29,8 +29,8 @@ export default function NewCampaignPage() {
       end_date: '',
       pricing_model: 'cpm',
       cpm_rate: 5.00,
-      cpc_rate: null,
-      cpv_rate: null,
+      cpc_rate: undefined,
+      cpv_rate: undefined,
     },
   });
 
@@ -43,22 +43,27 @@ export default function NewCampaignPage() {
 
       // Prepare campaign data with proper pricing fields
       const campaignData = {
-        ...data,
-        budget_total: Number(data.budget_total),
+        name: data.name,
         description: data.description || undefined,
-        // Ensure only the selected pricing model's rate is sent
-        cpm_rate: data.pricing_model === 'cpm' ? data.cpm_rate : null,
-        cpc_rate: data.pricing_model === 'cpc' ? data.cpc_rate : null,
-        cpv_rate: data.pricing_model === 'cpv' ? data.cpv_rate : null,
+        budget_total: Number(data.budget_total),
+        start_date: data.start_date,
+        end_date: data.end_date,
+        pricing_model: data.pricing_model,
+        // Ensure only the selected pricing model's rate is sent, convert null to undefined
+        cpm_rate: data.pricing_model === 'cpm' ? (data.cpm_rate ?? undefined) : undefined,
+        cpc_rate: data.pricing_model === 'cpc' ? (data.cpc_rate ?? undefined) : undefined,
+        cpv_rate: data.pricing_model === 'cpv' ? (data.cpv_rate ?? undefined) : undefined,
       };
 
-      await campaignApi.create(campaignData);
+      const result = await campaignApi.create(campaignData);
+      console.log('Campaign created successfully:', result);
 
       // Redirect to campaigns list on success
-      router.push('/campaigns');
-    } catch (err: any) {
-      setError(err.message || 'Failed to create campaign');
-    } finally {
+      console.log('Attempting to navigate to /campaigns');
+      window.location.href = '/campaigns';
+    } catch (err) {
+      console.error('Campaign creation error:', err);
+      setError(err instanceof Error ? err.message : 'Failed to create campaign');
       setIsSubmitting(false);
     }
   };
