@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { campaignApi, creativeApi } from '@/lib/api';
 import { Campaign } from '@/types/campaign';
 import { Creative } from '@/types/creative';
-import { ArrowLeft, Calendar, DollarSign, TrendingUp, Film, Trash2, Play } from 'lucide-react';
+import { ArrowLeft, Calendar, DollarSign, TrendingUp, Film, Trash2, Play, Edit, PlayCircle, PauseCircle } from 'lucide-react';
 import { format } from 'date-fns';
 
 export default function CampaignDetailsPage() {
@@ -19,6 +19,7 @@ export default function CampaignDetailsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [deletingCreativeId, setDeletingCreativeId] = useState<string | null>(null);
+  const [updatingStatus, setUpdatingStatus] = useState(false);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -54,6 +55,18 @@ export default function CampaignDetailsPage() {
       alert(err.message || 'Failed to delete creative');
     } finally {
       setDeletingCreativeId(null);
+    }
+  };
+
+  const handleStatusChange = async (newStatus: 'draft' | 'active' | 'paused' | 'completed') => {
+    try {
+      setUpdatingStatus(true);
+      await campaignApi.updateStatus(campaignId, { status: newStatus });
+      setCampaign((prev) => prev ? { ...prev, status: newStatus } : null);
+    } catch (err: any) {
+      alert(err.message || 'Failed to update campaign status');
+    } finally {
+      setUpdatingStatus(false);
     }
   };
 
@@ -121,13 +134,52 @@ export default function CampaignDetailsPage() {
               <p className="text-gray-600 mt-2">{campaign.description}</p>
             )}
           </div>
-          <span
-            className={`px-4 py-2 text-sm font-semibold rounded-full border ${getStatusColor(
-              campaign.status
-            )}`}
-          >
-            {campaign.status}
-          </span>
+          <div className="flex items-center gap-3">
+            <Link
+              href={`/campaigns/${campaignId}/edit`}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+            >
+              <Edit className="w-4 h-4" />
+              Edit
+            </Link>
+            {campaign.status === 'draft' && (
+              <button
+                onClick={() => handleStatusChange('active')}
+                disabled={updatingStatus}
+                className="inline-flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50"
+              >
+                <PlayCircle className="w-4 h-4" />
+                Activate
+              </button>
+            )}
+            {campaign.status === 'active' && (
+              <button
+                onClick={() => handleStatusChange('paused')}
+                disabled={updatingStatus}
+                className="inline-flex items-center gap-2 px-4 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 transition-colors disabled:opacity-50"
+              >
+                <PauseCircle className="w-4 h-4" />
+                Pause
+              </button>
+            )}
+            {campaign.status === 'paused' && (
+              <button
+                onClick={() => handleStatusChange('active')}
+                disabled={updatingStatus}
+                className="inline-flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50"
+              >
+                <PlayCircle className="w-4 h-4" />
+                Resume
+              </button>
+            )}
+            <span
+              className={`px-4 py-2 text-sm font-semibold rounded-full border ${getStatusColor(
+                campaign.status
+              )}`}
+            >
+              {campaign.status}
+            </span>
+          </div>
         </div>
       </div>
 

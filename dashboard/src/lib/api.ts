@@ -113,6 +113,13 @@ export const campaignApi = {
     });
   },
 
+  update: async (id: string, data: CreateCampaignDto): Promise<{ campaign: Campaign }> => {
+    return fetchWithAuth(`${API_BASE_URL}/api/v1/campaigns/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  },
+
   updateStatus: async (id: string, data: UpdateCampaignStatusDto): Promise<{ campaign: Campaign }> => {
     return fetchWithAuth(`${API_BASE_URL}/api/v1/campaigns/${id}/status`, {
       method: 'PUT',

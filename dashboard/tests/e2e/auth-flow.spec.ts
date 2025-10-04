@@ -692,3 +692,395 @@ test.describe('Creative Upload', () => {
     console.log('✅ Campaigns page loaded successfully');
   });
 });
+
+test.describe('Campaign Editing and Status Management', () => {
+  let campaignId: string;
+
+  test.beforeEach(async ({ page }) => {
+    // Clear cookies and localStorage before each test
+    await page.context().clearCookies();
+
+    // Listen to console logs
+    page.on('console', (msg) => {
+      const type = msg.type();
+      if (type === 'log' || type === 'error' || type === 'warning') {
+        console.log(`[Browser ${type}]:`, msg.text());
+      }
+    });
+
+    // Login before each test
+    await page.goto(`${DASHBOARD_URL}/login`);
+    await page.fill('input[type="email"]', 'advertiser@adserver.dev');
+    await page.fill('input[type="password"]', 'password123');
+    await page.click('button[type="submit"]');
+    await page.waitForURL(/\/$/, { timeout: 10000 });
+
+    // Create a test campaign
+    await page.goto(`${DASHBOARD_URL}/campaigns/new`);
+    const timestamp = Date.now();
+    const campaignName = `Status Test Campaign ${timestamp}`;
+
+    const today = new Date();
+    const futureDate = new Date(today);
+    futureDate.setDate(today.getDate() + 7);
+    const startDate = today.toISOString().split('T')[0];
+    const endDate = futureDate.toISOString().split('T')[0];
+
+    await page.fill('input[name="name"]', campaignName);
+    await page.fill('textarea[name="description"]', 'Campaign for status management testing');
+    await page.fill('input[name="budget_total"]', '5000');
+    await page.fill('input[name="start_date"]', startDate);
+    await page.fill('input[name="end_date"]', endDate);
+    await page.fill('input[name="cpm_rate"]', '5.00');
+    await page.click('button:has-text("Create Campaign")');
+    await page.waitForURL('**/campaigns', { timeout: 10000 });
+
+    // Extract campaign ID from the campaigns list
+    await page.waitForTimeout(1000);
+
+    // Find the row containing the campaign name, then get the "View Details" link
+    const campaignRow = page.locator('tr').filter({ hasText: campaignName });
+    const viewDetailsLink = campaignRow.locator('a:has-text("View Details")');
+    const href = await viewDetailsLink.getAttribute('href');
+    campaignId = href?.split('/').pop() || '';
+    console.log(`✅ Created test campaign: ${campaignId}`);
+  });
+
+  test('should show Edit button on campaign details page', async ({ page }) => {
+    console.log('🔍 Testing: Edit button visibility...');
+
+    // Navigate to campaign details
+    await page.goto(`${DASHBOARD_URL}/campaigns/${campaignId}`);
+    console.log('✅ On campaign details page');
+
+    // Wait for page to load
+    await page.waitForTimeout(1000);
+
+    // Check that Edit button is visible
+    await expect(page.locator('a:has-text("Edit")')).toBeVisible();
+    console.log('✅ Edit button is visible');
+  });
+
+  test('should show Activate button for draft campaign', async ({ page }) => {
+    console.log('🔍 Testing: Activate button for draft campaign...');
+
+    // Navigate to campaign details
+    await page.goto(`${DASHBOARD_URL}/campaigns/${campaignId}`);
+    console.log('✅ On campaign details page');
+
+    // Wait for page to load
+    await page.waitForTimeout(1000);
+
+    // Check that status badge shows "draft"
+    await expect(page.locator('span:has-text("draft")')).toBeVisible();
+    console.log('✅ Status badge shows draft');
+
+    // Check that Activate button is visible
+    await expect(page.locator('button:has-text("Activate")')).toBeVisible();
+    console.log('✅ Activate button is visible');
+
+    // Pause button should NOT be visible
+    const pauseButtonVisible = await page.locator('button:has-text("Pause")').isVisible();
+    expect(pauseButtonVisible).toBeFalsy();
+    console.log('✅ Pause button is not visible (correct for draft)');
+  });
+
+  test('should activate a draft campaign', async ({ page }) => {
+    console.log('🔍 Testing: Activating draft campaign...');
+
+    // Navigate to campaign details
+    await page.goto(`${DASHBOARD_URL}/campaigns/${campaignId}`);
+    console.log('✅ On campaign details page');
+
+    // Wait for page to load
+    await page.waitForTimeout(1000);
+
+    // Verify initial status is draft
+    await expect(page.locator('span:has-text("draft")')).toBeVisible();
+    console.log('✅ Initial status: draft');
+
+    // Click Activate button
+    await page.click('button:has-text("Activate")');
+    console.log('🔘 Clicked Activate button');
+
+    // Wait for status to update
+    await page.waitForTimeout(2000);
+
+    // Status badge should now show "active"
+    await expect(page.locator('span:has-text("active")')).toBeVisible();
+    console.log('✅ Status updated to active');
+
+    // Activate button should be gone, Pause button should be visible
+    const activateButtonVisible = await page.locator('button:has-text("Activate")').isVisible();
+    expect(activateButtonVisible).toBeFalsy();
+    await expect(page.locator('button:has-text("Pause")')).toBeVisible();
+    console.log('✅ Activate button hidden, Pause button now visible');
+  });
+
+  test('should pause an active campaign', async ({ page }) => {
+    console.log('🔍 Testing: Pausing active campaign...');
+
+    // Navigate to campaign details
+    await page.goto(`${DASHBOARD_URL}/campaigns/${campaignId}`);
+    await page.waitForTimeout(1000);
+
+    // First activate the campaign
+    await page.click('button:has-text("Activate")');
+    await page.waitForTimeout(2000);
+    await expect(page.locator('span:has-text("active")')).toBeVisible();
+    console.log('✅ Campaign activated');
+
+    // Now pause it
+    await page.click('button:has-text("Pause")');
+    console.log('🔘 Clicked Pause button');
+
+    // Wait for status to update
+    await page.waitForTimeout(2000);
+
+    // Status badge should now show "paused"
+    await expect(page.locator('span:has-text("paused")')).toBeVisible();
+    console.log('✅ Status updated to paused');
+
+    // Pause button should be gone, Resume button should be visible
+    const pauseButtonVisible = await page.locator('button:has-text("Pause")').isVisible();
+    expect(pauseButtonVisible).toBeFalsy();
+    await expect(page.locator('button:has-text("Resume")').or(page.locator('button:has-text("Activate")'))).toBeVisible();
+    console.log('✅ Pause button hidden, Resume/Activate button now visible');
+  });
+
+  test('should resume a paused campaign', async ({ page }) => {
+    console.log('🔍 Testing: Resuming paused campaign...');
+
+    // Navigate to campaign details
+    await page.goto(`${DASHBOARD_URL}/campaigns/${campaignId}`);
+    await page.waitForTimeout(1000);
+
+    // Activate the campaign
+    await page.click('button:has-text("Activate")');
+    await page.waitForTimeout(2000);
+    console.log('✅ Campaign activated');
+
+    // Pause it
+    await page.click('button:has-text("Pause")');
+    await page.waitForTimeout(2000);
+    await expect(page.locator('span:has-text("paused")')).toBeVisible();
+    console.log('✅ Campaign paused');
+
+    // Now resume it
+    const resumeButton = page.locator('button:has-text("Resume"), button:has-text("Activate")').first();
+    await resumeButton.click();
+    console.log('🔘 Clicked Resume/Activate button');
+
+    // Wait for status to update
+    await page.waitForTimeout(2000);
+
+    // Status badge should now show "active" again
+    await expect(page.locator('span:has-text("active")')).toBeVisible();
+    console.log('✅ Status updated back to active');
+
+    // Should show Pause button again
+    await expect(page.locator('button:has-text("Pause")')).toBeVisible();
+    console.log('✅ Pause button visible again');
+  });
+
+  test('should navigate to edit page when clicking Edit button', async ({ page }) => {
+    console.log('🔍 Testing: Navigate to edit page...');
+
+    // Navigate to campaign details
+    await page.goto(`${DASHBOARD_URL}/campaigns/${campaignId}`);
+    await page.waitForTimeout(1000);
+    console.log('✅ On campaign details page');
+
+    // Click Edit button
+    await page.click('a:has-text("Edit")');
+    console.log('🔘 Clicked Edit button');
+
+    // Should redirect to edit page
+    await page.waitForURL(`**/campaigns/${campaignId}/edit`, { timeout: 5000 });
+    console.log('✅ Redirected to edit page');
+
+    expect(page.url()).toContain(`/campaigns/${campaignId}/edit`);
+
+    // Check that form is visible with title
+    await expect(page.locator('h1:has-text("Edit Campaign")')).toBeVisible();
+    console.log('✅ Edit campaign page loaded');
+  });
+
+  test('should show pre-filled form data on edit page', async ({ page }) => {
+    console.log('🔍 Testing: Pre-filled form data...');
+
+    // Navigate to edit page
+    await page.goto(`${DASHBOARD_URL}/campaigns/${campaignId}/edit`);
+    await page.waitForTimeout(1500);
+    console.log('✅ On edit page');
+
+    // Check that form fields are pre-filled
+    const nameValue = await page.locator('input[name="name"]').inputValue();
+    expect(nameValue).toContain('Status Test Campaign');
+    console.log('✅ Name field is pre-filled');
+
+    const descriptionValue = await page.locator('textarea[name="description"]').inputValue();
+    expect(descriptionValue).toContain('Campaign for status management testing');
+    console.log('✅ Description field is pre-filled');
+
+    const budgetValue = await page.locator('input[name="budget_total"]').inputValue();
+    expect(parseFloat(budgetValue)).toBe(5000);
+    console.log('✅ Budget field is pre-filled');
+
+    const cpmValue = await page.locator('input[name="cpm_rate"]').inputValue();
+    expect(parseFloat(cpmValue)).toBe(5);
+    console.log('✅ CPM rate field is pre-filled');
+  });
+
+  test('should update campaign details when saving changes', async ({ page }) => {
+    console.log('🔍 Testing: Update campaign details...');
+
+    // Navigate to edit page
+    await page.goto(`${DASHBOARD_URL}/campaigns/${campaignId}/edit`);
+    await page.waitForTimeout(1500);
+    console.log('✅ On edit page');
+
+    // Update campaign name
+    const newName = `Updated Campaign ${Date.now()}`;
+    await page.fill('input[name="name"]', newName);
+    console.log('✅ Updated campaign name');
+
+    // Update budget
+    await page.fill('input[name="budget_total"]', '15000');
+    console.log('✅ Updated budget');
+
+    // Update CPM rate
+    await page.fill('input[name="cpm_rate"]', '7.50');
+    console.log('✅ Updated CPM rate');
+
+    // Submit form
+    await page.click('button:has-text("Save Changes")');
+    console.log('🔘 Clicked Save Changes');
+
+    // Should redirect to campaign details
+    await page.waitForURL(`**/campaigns/${campaignId}`, { timeout: 10000 });
+    console.log('✅ Redirected to campaign details');
+
+    // Wait for page to load
+    await page.waitForTimeout(1500);
+
+    // Verify updated values are displayed
+    await expect(page.locator(`h1:has-text("${newName}")`)).toBeVisible();
+    console.log('✅ Updated name is displayed');
+
+    // Re-fetch campaign to verify updates
+    const { campaign: updatedCampaign } = await page.evaluate(async () => {
+      const token = localStorage.getItem('auth_token');
+      const response = await fetch(`http://localhost:3000/api/v1/campaigns/${window.location.pathname.split('/')[2]}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      return response.json();
+    });
+
+    expect(parseFloat(updatedCampaign.budget_total)).toBe(15000);
+    console.log('✅ Updated budget is saved');
+
+    expect(parseFloat(updatedCampaign.cpm_rate)).toBe(7.5);
+    console.log('✅ Updated CPM rate is saved');
+  });
+
+  test('should cancel editing and return to campaign details', async ({ page }) => {
+    console.log('🔍 Testing: Cancel editing...');
+
+    // Navigate to edit page
+    await page.goto(`${DASHBOARD_URL}/campaigns/${campaignId}/edit`);
+    await page.waitForTimeout(1500);
+    console.log('✅ On edit page');
+
+    // Make some changes
+    await page.fill('input[name="name"]', 'This should not be saved');
+    console.log('✅ Made changes to form');
+
+    // Click cancel
+    await page.click('text=Cancel');
+    console.log('🔘 Clicked Cancel');
+
+    // Should redirect to campaign details
+    await page.waitForURL(`**/campaigns/${campaignId}`, { timeout: 5000 });
+    console.log('✅ Redirected to campaign details');
+
+    // Changes should not be saved
+    const titleHasChangedName = await page.locator('h1:has-text("This should not be saved")').isVisible();
+    expect(titleHasChangedName).toBeFalsy();
+    console.log('✅ Changes were not saved (correct)');
+  });
+
+  test('should show validation error when updating with invalid data', async ({ page }) => {
+    console.log('🔍 Testing: Validation on edit...');
+
+    // Navigate to edit page
+    await page.goto(`${DASHBOARD_URL}/campaigns/${campaignId}/edit`);
+    await page.waitForTimeout(1500);
+    console.log('✅ On edit page');
+
+    // Clear required field
+    await page.fill('input[name="name"]', '');
+    console.log('✅ Cleared name field');
+
+    // Submit form
+    await page.click('button:has-text("Save Changes")');
+    console.log('🔘 Clicked Save Changes');
+
+    // Wait for validation error
+    await page.waitForTimeout(500);
+
+    // Should show validation error
+    await expect(page.locator('text=/required|must be/i')).toBeVisible();
+    console.log('✅ Validation error displayed');
+
+    // Should still be on edit page
+    expect(page.url()).toContain(`/campaigns/${campaignId}/edit`);
+    console.log('✅ Still on edit page (not submitted)');
+  });
+
+  test('should change pricing model and update rates', async ({ page }) => {
+    console.log('🔍 Testing: Change pricing model...');
+
+    // Navigate to edit page
+    await page.goto(`${DASHBOARD_URL}/campaigns/${campaignId}/edit`);
+    await page.waitForTimeout(1500);
+    console.log('✅ On edit page');
+
+    // Change pricing model from CPM to CPC
+    await page.selectOption('select[name="pricing_model"]', 'cpc');
+    console.log('✅ Changed pricing model to CPC');
+
+    // Wait for form to react
+    await page.waitForTimeout(300);
+
+    // CPM field should be disabled
+    const cpmDisabled = await page.locator('input[name="cpm_rate"]').isDisabled();
+    expect(cpmDisabled).toBeTruthy();
+    console.log('✅ CPM field is disabled');
+
+    // CPC field should be enabled
+    const cpcDisabled = await page.locator('input[name="cpc_rate"]').isDisabled();
+    expect(cpcDisabled).toBeFalsy();
+    console.log('✅ CPC field is enabled');
+
+    // Fill CPC rate
+    await page.fill('input[name="cpc_rate"]', '0.75');
+    console.log('✅ Filled CPC rate');
+
+    // Submit form
+    await page.click('button:has-text("Save Changes")');
+    console.log('🔘 Clicked Save Changes');
+
+    // Should redirect to campaign details
+    await page.waitForURL(`**/campaigns/${campaignId}`, { timeout: 10000 });
+    console.log('✅ Redirected to campaign details');
+
+    // Wait for page to load
+    await page.waitForTimeout(1500);
+
+    // Verify pricing model is updated
+    await expect(page.locator('text=CPC')).toBeVisible();
+    await expect(page.locator('text=$0.75 per click')).toBeVisible();
+    console.log('✅ Pricing model updated to CPC with correct rate');
+  });
+});
