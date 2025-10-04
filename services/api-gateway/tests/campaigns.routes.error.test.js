@@ -18,7 +18,9 @@ describe('Campaign Routes - Error Handling', () => {
         description: 'Triggering error path',
         budget_total: 1000,
         start_date: '2025-01-01T00:00:00.000Z',
-        end_date: '2025-12-31T00:00:00.000Z'
+        end_date: '2025-12-31T00:00:00.000Z',
+        pricing_model: 'cpm',
+        cpm_rate: 5.00
     };
 
     beforeEach(async () => {

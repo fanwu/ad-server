@@ -39,6 +39,8 @@ describe('Analytics Integration Tests', () => {
             budget_total: 10000,
             start_date: '2025-01-01T00:00:00.000Z',
             end_date: '2025-12-31T00:00:00.000Z',
+            pricing_model: 'cpm',
+            cpm_rate: 5.00,
             ...safeOverrides
         };
 
@@ -269,7 +271,9 @@ describe('Analytics Integration Tests', () => {
                     name: 'Other User Campaign',
                     budget_total: 5000,
                     start_date: '2025-01-01T00:00:00.000Z',
-                    end_date: '2025-12-31T00:00:00.000Z'
+                    end_date: '2025-12-31T00:00:00.000Z',
+                    pricing_model: 'cpm',
+                    cpm_rate: 5.00
                 })
                 .expect(201);
 

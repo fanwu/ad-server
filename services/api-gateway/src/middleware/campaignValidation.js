@@ -49,7 +49,73 @@ const createCampaignSchema = Joi.object({
             'date.format': 'End date must be in ISO format',
             'date.greater': 'End date must be after start date',
             'any.required': 'End date is required'
+        }),
+
+    pricing_model: Joi.string()
+        .valid('cpm', 'cpc', 'cpv', 'flat')
+        .optional()
+        .default('cpm')
+        .messages({
+            'any.only': 'Pricing model must be one of: cpm, cpc, cpv, flat'
+        }),
+
+    cpm_rate: Joi.number()
+        .positive()
+        .precision(2)
+        .min(0.01)
+        .max(1000)
+        .optional()
+        .allow(null)
+        .messages({
+            'number.positive': 'CPM rate must be a positive number',
+            'number.min': 'CPM rate must be at least $0.01',
+            'number.max': 'CPM rate cannot exceed $1,000'
+        }),
+
+    cpc_rate: Joi.number()
+        .positive()
+        .precision(2)
+        .min(0.01)
+        .max(100)
+        .optional()
+        .allow(null)
+        .messages({
+            'number.positive': 'CPC rate must be a positive number',
+            'number.min': 'CPC rate must be at least $0.01',
+            'number.max': 'CPC rate cannot exceed $100'
+        }),
+
+    cpv_rate: Joi.number()
+        .positive()
+        .precision(2)
+        .min(0.01)
+        .max(100)
+        .optional()
+        .allow(null)
+        .messages({
+            'number.positive': 'CPV rate must be a positive number',
+            'number.min': 'CPV rate must be at least $0.01',
+            'number.max': 'CPV rate cannot exceed $100'
         })
+}).custom((value, helpers) => {
+    // Validate that the appropriate rate is set for the pricing model
+    const { pricing_model, cpm_rate, cpc_rate, cpv_rate } = value;
+
+    if (pricing_model === 'cpm' && (!cpm_rate || cpm_rate <= 0)) {
+        return helpers.error('custom.cpmRequired');
+    }
+    if (pricing_model === 'cpc' && (!cpc_rate || cpc_rate <= 0)) {
+        return helpers.error('custom.cpcRequired');
+    }
+    if (pricing_model === 'cpv' && (!cpv_rate || cpv_rate <= 0)) {
+        return helpers.error('custom.cpvRequired');
+    }
+
+    return value;
+}, 'Pricing validation').messages({
+    'custom.cpmRequired': 'CPM rate is required when using CPM pricing model',
+    'custom.cpcRequired': 'CPC rate is required when using CPC pricing model',
+    'custom.cpvRequired': 'CPV rate is required when using CPV pricing model'
 });
 
 // Schema for updating a campaign
@@ -101,6 +167,52 @@ const updateCampaignSchema = Joi.object({
         .messages({
             'date.format': 'End date must be in ISO format',
             'date.greater': 'End date must be after start date'
+        }),
+
+    pricing_model: Joi.string()
+        .valid('cpm', 'cpc', 'cpv', 'flat')
+        .optional()
+        .messages({
+            'any.only': 'Pricing model must be one of: cpm, cpc, cpv, flat'
+        }),
+
+    cpm_rate: Joi.number()
+        .positive()
+        .precision(2)
+        .min(0.01)
+        .max(1000)
+        .optional()
+        .allow(null)
+        .messages({
+            'number.positive': 'CPM rate must be a positive number',
+            'number.min': 'CPM rate must be at least $0.01',
+            'number.max': 'CPM rate cannot exceed $1,000'
+        }),
+
+    cpc_rate: Joi.number()
+        .positive()
+        .precision(2)
+        .min(0.01)
+        .max(100)
+        .optional()
+        .allow(null)
+        .messages({
+            'number.positive': 'CPC rate must be a positive number',
+            'number.min': 'CPC rate must be at least $0.01',
+            'number.max': 'CPC rate cannot exceed $100'
+        }),
+
+    cpv_rate: Joi.number()
+        .positive()
+        .precision(2)
+        .min(0.01)
+        .max(100)
+        .optional()
+        .allow(null)
+        .messages({
+            'number.positive': 'CPV rate must be a positive number',
+            'number.min': 'CPV rate must be at least $0.01',
+            'number.max': 'CPV rate cannot exceed $100'
         })
 }).min(1); // At least one field must be provided for update
 

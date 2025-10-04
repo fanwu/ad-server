@@ -12,6 +12,13 @@ describe('Campaign Comprehensive Tests', () => {
     let secondUser;
     let secondUserToken;
 
+    // Helper to build campaign payload with default pricing
+    const buildCampaignData = (overrides = {}) => ({
+        pricing_model: 'cpm',
+        cpm_rate: 5.00,
+        ...overrides
+    });
+
     beforeEach(async () => {
         // Create test user
         testUser = await global.testUtils.createTestUser({
@@ -63,7 +70,9 @@ describe('Campaign Comprehensive Tests', () => {
                 description: 'Test campaign description',
                 budget_total: 1000.00,
                 start_date: '2025-01-01',
-                end_date: '2025-12-31'
+                end_date: '2025-12-31',
+                pricing_model: 'cpm',
+                cpm_rate: 5.00
             };
 
             const response = await request(app)
