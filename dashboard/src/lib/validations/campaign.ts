@@ -22,13 +22,36 @@ export const createCampaignSchema = z.object({
     .refine((date) => {
       const selectedDate = new Date(date);
       selectedDate.setHours(0, 0, 0, 0);
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      return selectedDate >= today;
-    }, 'Start date must be today or in the future'),
+      const yesterday = new Date();
+      yesterday.setDate(yesterday.getDate() - 1);
+      yesterday.setHours(0, 0, 0, 0);
+      return selectedDate >= yesterday;
+    }, 'Start date cannot be more than 1 day in the past'),
 
   end_date: z.string()
     .min(1, 'End date is required'),
+
+  pricing_model: z.enum(['cpm', 'cpc', 'cpv', 'flat'], {
+    required_error: 'Pricing model is required',
+  }),
+
+  cpm_rate: z.number()
+    .positive('CPM rate must be greater than 0')
+    .max(1000, 'CPM rate cannot exceed $1,000')
+    .optional()
+    .nullable(),
+
+  cpc_rate: z.number()
+    .positive('CPC rate must be greater than 0')
+    .max(100, 'CPC rate cannot exceed $100')
+    .optional()
+    .nullable(),
+
+  cpv_rate: z.number()
+    .positive('CPV rate must be greater than 0')
+    .max(100, 'CPV rate cannot exceed $100')
+    .optional()
+    .nullable(),
 }).refine((data) => {
   const startDate = new Date(data.start_date);
   const endDate = new Date(data.end_date);
@@ -36,6 +59,21 @@ export const createCampaignSchema = z.object({
 }, {
   message: 'End date must be after start date',
   path: ['end_date'],
+}).refine((data) => {
+  // Validate that the appropriate rate is set for the pricing model
+  if (data.pricing_model === 'cpm' && (!data.cpm_rate || data.cpm_rate <= 0)) {
+    return false;
+  }
+  if (data.pricing_model === 'cpc' && (!data.cpc_rate || data.cpc_rate <= 0)) {
+    return false;
+  }
+  if (data.pricing_model === 'cpv' && (!data.cpv_rate || data.cpv_rate <= 0)) {
+    return false;
+  }
+  return true;
+}, {
+  message: 'Please enter a rate for the selected pricing model',
+  path: ['cpm_rate'], // Will show on whichever field is relevant
 });
 
 export type CreateCampaignFormData = z.infer<typeof createCampaignSchema>;

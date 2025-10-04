@@ -266,6 +266,8 @@ test.describe('Campaign Creation', () => {
     await expect(page.locator('input[name="budget_total"]')).toBeVisible();
     await expect(page.locator('input[name="start_date"]')).toBeVisible();
     await expect(page.locator('input[name="end_date"]')).toBeVisible();
+    await expect(page.locator('select[name="pricing_model"]')).toBeVisible();
+    await expect(page.locator('input[name="cpm_rate"]')).toBeVisible();
     console.log('✅ All form elements visible');
   });
 
@@ -315,6 +317,9 @@ test.describe('Campaign Creation', () => {
 
     await page.fill('input[name="start_date"]', startDate);
     await page.fill('input[name="end_date"]', endDate);
+
+    // Fill pricing fields (CPM is the default)
+    await page.fill('input[name="cpm_rate"]', '5.00');
     console.log('✅ Filled form with valid data');
 
     // Submit form
@@ -410,6 +415,7 @@ test.describe('Campaign Creation', () => {
     await page.fill('input[name="budget_total"]', '5000');
     await page.fill('input[name="start_date"]', todayStr);
     await page.fill('input[name="end_date"]', futureDateStr);
+    await page.fill('input[name="cpm_rate"]', '5.00');
     console.log('✅ Filled form with today as start date');
 
     // Submit form
@@ -470,6 +476,7 @@ test.describe('Creative Upload', () => {
     await page.fill('input[name="budget_total"]', '5000');
     await page.fill('input[name="start_date"]', startDate);
     await page.fill('input[name="end_date"]', endDate);
+    await page.fill('input[name="cpm_rate"]', '5.00');
     await page.click('button:has-text("Create Campaign")');
     await page.waitForURL('**/campaigns', { timeout: 10000 });
 

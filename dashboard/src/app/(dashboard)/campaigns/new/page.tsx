@@ -17,6 +17,7 @@ export default function NewCampaignPage() {
   const {
     register,
     handleSubmit,
+    watch,
     formState: { errors },
   } = useForm<CreateCampaignFormData>({
     resolver: zodResolver(createCampaignSchema),
@@ -26,19 +27,29 @@ export default function NewCampaignPage() {
       budget_total: undefined,
       start_date: '',
       end_date: '',
+      pricing_model: 'cpm',
+      cpm_rate: 5.00,
+      cpc_rate: null,
+      cpv_rate: null,
     },
   });
+
+  const pricingModel = watch('pricing_model');
 
   const onSubmit = async (data: CreateCampaignFormData) => {
     try {
       setIsSubmitting(true);
       setError('');
 
-      // Convert budget to number if it's a string
+      // Prepare campaign data with proper pricing fields
       const campaignData = {
         ...data,
         budget_total: Number(data.budget_total),
         description: data.description || undefined,
+        // Ensure only the selected pricing model's rate is sent
+        cpm_rate: data.pricing_model === 'cpm' ? data.cpm_rate : null,
+        cpc_rate: data.pricing_model === 'cpc' ? data.cpc_rate : null,
+        cpv_rate: data.pricing_model === 'cpv' ? data.cpv_rate : null,
       };
 
       await campaignApi.create(campaignData);
@@ -166,6 +177,103 @@ export default function NewCampaignPage() {
             {errors.end_date && (
               <p className="mt-1 text-sm text-red-600">{errors.end_date.message}</p>
             )}
+          </div>
+        </div>
+
+        {/* Pricing Section */}
+        <div className="pt-4 border-t border-gray-200">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">Pricing Configuration</h3>
+
+          {/* Pricing Model */}
+          <div className="mb-4">
+            <label htmlFor="pricing_model" className="block text-sm font-medium text-gray-700 mb-1">
+              Pricing Model <span className="text-red-500">*</span>
+            </label>
+            <select
+              id="pricing_model"
+              {...register('pricing_model')}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            >
+              <option value="cpm">CPM - Cost Per 1000 Impressions</option>
+              <option value="cpc">CPC - Cost Per Click</option>
+              <option value="cpv">CPV - Cost Per View/Completion</option>
+              <option value="flat">Flat - Fixed Budget</option>
+            </select>
+            {errors.pricing_model && (
+              <p className="mt-1 text-sm text-red-600">{errors.pricing_model.message}</p>
+            )}
+            <p className="mt-1 text-sm text-gray-500">
+              {pricingModel === 'cpm' && 'You will be charged for every 1000 ad impressions'}
+              {pricingModel === 'cpc' && 'You will be charged only when viewers click your ad'}
+              {pricingModel === 'cpv' && 'You will be charged when viewers watch your ad to completion'}
+              {pricingModel === 'flat' && 'Fixed budget with no per-unit pricing'}
+            </p>
+          </div>
+
+          {/* Pricing Rates */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {/* CPM Rate */}
+            <div>
+              <label htmlFor="cpm_rate" className="block text-sm font-medium text-gray-700 mb-1">
+                CPM Rate ($) {pricingModel === 'cpm' && <span className="text-red-500">*</span>}
+              </label>
+              <input
+                id="cpm_rate"
+                type="number"
+                step="0.01"
+                min="0"
+                disabled={pricingModel !== 'cpm'}
+                {...register('cpm_rate', { valueAsNumber: true })}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 disabled:cursor-not-allowed"
+                placeholder="5.00"
+              />
+              {errors.cpm_rate && (
+                <p className="mt-1 text-sm text-red-600">{errors.cpm_rate.message}</p>
+              )}
+              <p className="mt-1 text-xs text-gray-500">Per 1000 impressions</p>
+            </div>
+
+            {/* CPC Rate */}
+            <div>
+              <label htmlFor="cpc_rate" className="block text-sm font-medium text-gray-700 mb-1">
+                CPC Rate ($) {pricingModel === 'cpc' && <span className="text-red-500">*</span>}
+              </label>
+              <input
+                id="cpc_rate"
+                type="number"
+                step="0.01"
+                min="0"
+                disabled={pricingModel !== 'cpc'}
+                {...register('cpc_rate', { valueAsNumber: true })}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 disabled:cursor-not-allowed"
+                placeholder="0.50"
+              />
+              {errors.cpc_rate && (
+                <p className="mt-1 text-sm text-red-600">{errors.cpc_rate.message}</p>
+              )}
+              <p className="mt-1 text-xs text-gray-500">Per click</p>
+            </div>
+
+            {/* CPV Rate */}
+            <div>
+              <label htmlFor="cpv_rate" className="block text-sm font-medium text-gray-700 mb-1">
+                CPV Rate ($) {pricingModel === 'cpv' && <span className="text-red-500">*</span>}
+              </label>
+              <input
+                id="cpv_rate"
+                type="number"
+                step="0.01"
+                min="0"
+                disabled={pricingModel !== 'cpv'}
+                {...register('cpv_rate', { valueAsNumber: true })}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 disabled:cursor-not-allowed"
+                placeholder="0.25"
+              />
+              {errors.cpv_rate && (
+                <p className="mt-1 text-sm text-red-600">{errors.cpv_rate.message}</p>
+              )}
+              <p className="mt-1 text-xs text-gray-500">Per completed view</p>
+            </div>
           </div>
         </div>
 

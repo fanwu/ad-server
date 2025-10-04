@@ -17,10 +17,16 @@ class CampaignService {
             const query = `
                 INSERT INTO campaigns (
                     name, description, status, budget_total,
-                    start_date, end_date, created_by
-                ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+                    start_date, end_date, pricing_model, cpm_rate, cpc_rate, cpv_rate, created_by
+                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
                 RETURNING *
             `;
+
+            // Ensure pricing model defaults and rate consistency
+            const pricingModel = campaignData.pricing_model || 'cpm';
+            const cpmRate = pricingModel === 'cpm' ? (campaignData.cpm_rate || 5.00) : campaignData.cpm_rate || null;
+            const cpcRate = pricingModel === 'cpc' ? (campaignData.cpc_rate || 0.50) : campaignData.cpc_rate || null;
+            const cpvRate = pricingModel === 'cpv' ? (campaignData.cpv_rate || 0.25) : campaignData.cpv_rate || null;
 
             const values = [
                 campaignData.name,
@@ -29,6 +35,10 @@ class CampaignService {
                 campaignData.budget_total,
                 campaignData.start_date,
                 campaignData.end_date,
+                pricingModel,
+                cpmRate,
+                cpcRate,
+                cpvRate,
                 userId
             ];
 
@@ -140,7 +150,7 @@ class CampaignService {
             const values = [];
             let paramIndex = 1;
 
-            const allowedFields = ['name', 'description', 'budget_total', 'start_date', 'end_date'];
+            const allowedFields = ['name', 'description', 'budget_total', 'start_date', 'end_date', 'pricing_model', 'cpm_rate', 'cpc_rate', 'cpv_rate'];
 
             for (const field of allowedFields) {
                 if (updates[field] !== undefined) {

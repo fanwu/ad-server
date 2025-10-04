@@ -307,6 +307,19 @@ export default function CampaignDetailsPage() {
             <dd className="mt-1 text-sm text-gray-900 font-mono">{campaign.id}</dd>
           </div>
           <div>
+            <dt className="text-sm font-medium text-gray-600">Pricing Model</dt>
+            <dd className="mt-1 text-sm text-gray-900">
+              {campaign.pricing_model.toUpperCase()}
+              {campaign.pricing_model === 'cpm' && campaign.cpm_rate &&
+                ` - $${Number(campaign.cpm_rate).toFixed(2)} per 1,000 impressions`}
+              {campaign.pricing_model === 'cpc' && campaign.cpc_rate &&
+                ` - $${Number(campaign.cpc_rate).toFixed(2)} per click`}
+              {campaign.pricing_model === 'cpv' && campaign.cpv_rate &&
+                ` - $${Number(campaign.cpv_rate).toFixed(2)} per view`}
+              {campaign.pricing_model === 'flat' && ' - Fixed budget'}
+            </dd>
+          </div>
+          <div>
             <dt className="text-sm font-medium text-gray-600">Created</dt>
             <dd className="mt-1 text-sm text-gray-900">
               {format(new Date(campaign.created_at), 'MMM d, yyyy h:mm a')}

@@ -195,16 +195,30 @@ global.testUtils = {
             budget_total: 1000.00,
             start_date: new Date('2025-01-01'),
             end_date: new Date('2025-12-31'),
-            status: 'draft'
+            status: 'draft',
+            pricing_model: 'cpm',
+            cpm_rate: 5.00
         };
 
         const campaign = { ...defaultData, ...campaignData };
 
         const result = await global.testPool.query(
-            `INSERT INTO campaigns (name, description, budget_total, start_date, end_date, status, created_by)
-             VALUES ($1, $2, $3, $4, $5, $6, $7)
+            `INSERT INTO campaigns (name, description, budget_total, start_date, end_date, status, pricing_model, cpm_rate, cpc_rate, cpv_rate, created_by)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
              RETURNING *`,
-            [campaign.name, campaign.description, campaign.budget_total, campaign.start_date, campaign.end_date, campaign.status, userId]
+            [
+                campaign.name,
+                campaign.description,
+                campaign.budget_total,
+                campaign.start_date,
+                campaign.end_date,
+                campaign.status,
+                campaign.pricing_model || 'cpm',
+                campaign.pricing_model === 'cpm' ? (campaign.cpm_rate || 5.00) : null,
+                campaign.pricing_model === 'cpc' ? (campaign.cpc_rate || 0.50) : null,
+                campaign.pricing_model === 'cpv' ? (campaign.cpv_rate || 0.25) : null,
+                userId
+            ]
         );
 
         return result.rows[0];

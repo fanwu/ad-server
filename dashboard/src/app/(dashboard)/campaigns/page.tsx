@@ -150,6 +150,9 @@ export default function CampaignsPage() {
                   Status
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Pricing
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Budget
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -181,6 +184,17 @@ export default function CampaignsPage() {
                     >
                       {campaign.status}
                     </span>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="text-sm text-gray-900">
+                      {campaign.pricing_model.toUpperCase()}
+                    </div>
+                    <div className="text-sm text-gray-500">
+                      {campaign.pricing_model === 'cpm' && campaign.cpm_rate && `$${Number(campaign.cpm_rate).toFixed(2)} per 1K`}
+                      {campaign.pricing_model === 'cpc' && campaign.cpc_rate && `$${Number(campaign.cpc_rate).toFixed(2)} per click`}
+                      {campaign.pricing_model === 'cpv' && campaign.cpv_rate && `$${Number(campaign.cpv_rate).toFixed(2)} per view`}
+                      {campaign.pricing_model === 'flat' && 'Fixed budget'}
+                    </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="text-sm text-gray-900">
